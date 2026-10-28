@@ -23,7 +23,7 @@ const registerSchema = z.object({
 
 export async function registerAction(_prev: unknown, formData: FormData) {
   const parsed = registerSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  if (!parsed.success) return { error: parsed.error.issues[0]!?.message ?? "Invalid input" };
   const { role, firstName, lastName, email, password } = parsed.data;
   const db = getDb();
 
@@ -39,6 +39,7 @@ export async function registerAction(_prev: unknown, formData: FormData) {
     pseudonymizedId: generatePseudonymizedId(),
     isVerified: role !== "student", // students earn verification through the 4 gates
   }).returning();
+  if (!user) return { error: "Could not create your account — try again" };
 
   if (role === "student") {
     await db.insert(studentProfiles).values({ userId: user.id, currentStep: "nin" });
@@ -86,7 +87,7 @@ export async function submitMatric(formData: FormData) {
   const code = String(formData.get("university") ?? "").toLowerCase();
   const matric = String(formData.get("matric") ?? "").toUpperCase();
   const studentEmail = String(formData.get("studentEmail") ?? "").toLowerCase();
-  const uni = (await db.select().from(universities).where(eq(universities.code, code)))[0];
+  const uni = (await db.select().from(universities).where(eq(universities.code, code)))[0]!;
   if (!uni) return { error: "Unknown university" };
   if (!new RegExp(uni.matricPattern).test(matric)) return { error: "Matric number format doesn't match this university" };
   const domain = studentEmail.split("@")[1];
@@ -123,9 +124,9 @@ export async function reserveRoom(formData: FormData) {
   const roomId = String(formData.get("roomId") ?? "");
   const db = getDb();
   const { rooms, properties, bookings, transactions } = await import("@kith/database");
-  const room = (await db.select().from(rooms).where(eq(rooms.id, roomId)))[0];
+  const room = (await db.select().from(rooms).where(eq(rooms.id, roomId)))[0]!;
   if (!room || room.saleMode !== "fixed" || !room.isAvailable) return { error: "Room not bookable" };
-  const property = (await db.select().from(properties).where(eq(properties.id, room.propertyId)))[0];
+  const property = (await db.select().from(properties).where(eq(properties.id, room.propertyId)))[0]!;
   const price = room.priceKobo ?? 0n;
   const platform = (price * 1500n) / 10_000n;
   const now = Date.now();
@@ -141,6 +142,8 @@ export async function reserveRoom(formData: FormData) {
     status: "pending", // confirmed only by the payment webhook
     signedAgreementHash: createHash("sha256").update(`licence-to-occupy-v1+${user.id}`).digest("hex"),
   }).returning();
+  if (!booking) return { error: "Could not hold that room — try again" };
+  if (!property) return { error: "Property unavailable" };
 
   const { newPaystackReference, initCheckout } = await import("@/lib/paystack");
   const reference = newPaystackReference();
@@ -157,6 +160,7 @@ export async function reserveRoom(formData: FormData) {
     paystackReference: reference,
     autoReleaseAt: new Date(now + 3 * day + day),
   }).returning();
+  if (!tx) return { error: "Could not start checkout — try again" };
 
   await db.update(rooms).set({ isAvailable: false }).where(eq(rooms.id, room.id));
 

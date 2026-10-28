@@ -17,7 +17,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const parsed = credentialsSchema.safeParse(creds);
         if (!parsed.success) throw new Error("Invalid input");
         const db = getDb();
-        const user = (await db.select().from(users).where(eq(users.email, parsed.data.email.toLowerCase())))[0];
+        const user = (await db.select().from(users).where(eq(users.email, parsed.data.email.toLowerCase())))[0]!;
         // uniform error: never reveal which factor failed
         if (!user) throw new Error("Invalid credentials");
         if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) throw new Error("Account locked");

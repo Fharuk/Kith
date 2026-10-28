@@ -69,7 +69,7 @@ export function LiveAuction({
     return () => clearInterval(t);
   }, []);
 
-  const applyState = useCallback((next: LiveState, incoming?: LiveBid[]) => {
+  const applyState = useCallback((next: LiveState, incoming?: LiveBid) => {
     setState((prev) => {
       if (next.version < prev.version) return prev;
       if (next.version > prev.version) setFlash(true);

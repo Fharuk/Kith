@@ -10,7 +10,7 @@ export async function runMigrations() {
   // runtime path — bundlers must not try to resolve the folder statically
   const folders = { migrationsFolder: path.join(repoRoot(), "packages", "database", "drizzle") };
   if (url) {
-    await migratePg(db as Parameters<typeof migratePg>[0], folders);
+    await migratePg(db as unknown as Parameters<typeof migratePg>[0], folders);
   } else {
     await migratePglite(db as Parameters<typeof migratePglite>[0], folders);
   }

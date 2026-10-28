@@ -62,7 +62,7 @@ export default async function RoomsPage({ searchParams }: { searchParams: Promis
         <div className="mt-8 flex flex-wrap gap-2" role="tablist" aria-label="Tier filter">
           <TierChip href="/rooms" label="All tiers" active={!tier} />
           {TIERS.map((t) => (
-            <TierChip key={t} href={`/rooms?tier=${t}${q ? `&q=${q}` : ""}`} label={t[0].toUpperCase() + t.slice(1)} active={tier === t} />
+            <TierChip key={t} href={`/rooms?tier=${t}${q ? `&q=${q}` : ""}`} label={t[0]!.toUpperCase() + t.slice(1)} active={tier === t} />
           ))}
         </div>
 

@@ -99,6 +99,7 @@ export function ScrollWorld() {
   }
 
   const stage = Math.min(FRAMES.length - 1, Math.floor(progress * FRAMES.length));
+  const frame = FRAMES[stage] ?? FRAMES[0]!;
   // Frame-local progress 0→1 for the push-in
   const local = progress * FRAMES.length - stage;
 
@@ -134,12 +135,12 @@ export function ScrollWorld() {
         <div className="relative mx-auto w-full max-w-6xl px-6">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-kith-green">The walk</p>
           <p className="tabular mt-2 font-mono text-xs text-paper/50">
-            {FRAMES[stage].kicker} · {String(Math.round(progress * 100)).padStart(2, "0")}%
+            {frame.kicker} · {String(Math.round(progress * 100)).padStart(2, "0")}%
           </p>
           <h2 className="mt-4 max-w-2xl font-display text-4xl leading-tight text-paper sm:text-5xl">
-            {FRAMES[stage].title}
+            {frame.title}
           </h2>
-          <p className="mt-4 max-w-lg text-base leading-relaxed text-paper/70">{FRAMES[stage].body}</p>
+          <p className="mt-4 max-w-lg text-base leading-relaxed text-paper/70">{frame.body}</p>
 
           {stage === FRAMES.length - 1 && (
             <Link

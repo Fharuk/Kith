@@ -21,7 +21,7 @@ export function RoomCard({ room, property, imageUrl }: { room: Room; property: P
           />
         ) : null}
         <span className={`absolute left-4 top-4 rounded-full px-3.5 py-1.5 text-xs font-semibold ${tierStyle[room.tier]}`}>
-          {room.tier === "circle" ? "Circle · live auction" : room.tier[0].toUpperCase() + room.tier.slice(1)}
+          {room.tier === "circle" ? "Circle · live auction" : room.tier[0]!.toUpperCase() + room.tier.slice(1)}
         </span>
       </div>
       <div className="flex flex-1 flex-col p-6">

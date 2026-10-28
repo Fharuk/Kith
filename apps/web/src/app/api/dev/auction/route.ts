@@ -18,14 +18,15 @@ export async function POST(req: Request) {
 
   let room;
   if (body?.roomId) {
-    room = (await db.select().from(rooms).where(eq(rooms.id, body.roomId)))[0];
+    room = (await db.select().from(rooms).where(eq(rooms.id, body.roomId)))[0]!;
   } else {
     const circleRooms = await db.select().from(rooms).where(eq(rooms.tier, "circle"));
-    room = circleRooms.find((r) => r.floorPriceKobo !== null) ?? circleRooms[0];
+    room = circleRooms.find((r) => r.floorPriceKobo !== null) ?? circleRooms[0]!;
   }
   if (!room) return Response.json({ ok: false, error: "no circle room" }, { status: 409 });
 
   const property = (await db.select().from(properties).where(eq(properties.id, room.propertyId)))[0];
+  if (!property) return Response.json({ ok: false, error: "property missing" }, { status: 409 });
   const seconds = body?.seconds ? Math.max(1, Math.min(7200, body.seconds)) : undefined;
   const minutes = Math.max(1, Math.min(120, body?.minutes ?? 12));
   const now = Date.now();
@@ -47,6 +48,7 @@ export async function POST(req: Request) {
     totalBids: 0,
     version: 1,
   }).returning();
+  if (!auction) return Response.json({ ok: false, error: "could not open auction" }, { status: 500 });
 
   await db.update(rooms).set({ isAvailable: false }).where(eq(rooms.id, room.id));
 

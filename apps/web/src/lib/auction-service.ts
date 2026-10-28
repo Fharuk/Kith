@@ -79,10 +79,10 @@ async function publish(room: string, event: string, payload: unknown): Promise<v
 
 export async function loadAuction(auctionId: string) {
   const db = getDb();
-  const auction = (await db.select().from(auctions).where(eq(auctions.id, auctionId)))[0];
+  const auction = (await db.select().from(auctions).where(eq(auctions.id, auctionId)))[0]!;
   if (!auction) return null;
-  const room = (await db.select().from(rooms).where(eq(rooms.id, auction.roomId)))[0];
-  const property = room ? (await db.select().from(properties).where(eq(properties.id, room.propertyId)))[0] : undefined;
+  const room = (await db.select().from(rooms).where(eq(rooms.id, auction.roomId)))[0]!;
+  const property = room ? (await db.select().from(properties).where(eq(properties.id, room.propertyId)))[0]! : undefined;
   return { auction, room, property };
 }
 
@@ -128,7 +128,7 @@ export async function placeBid(input: {
   const state = toDomainState(loaded.auction);
 
   // Duplicate submission (double-tap / retry) — same key already recorded.
-  const dupe = (await db.select().from(bids).where(eq(bids.idempotencyKey, input.idempotencyKey)))[0];
+  const dupe = (await db.select().from(bids).where(eq(bids.idempotencyKey, input.idempotencyKey)))[0]!;
   if (dupe) return { ok: false, code: BID_REJECTION.DUPLICATE, state };
 
   const intent: BidIntent = {
@@ -166,6 +166,7 @@ export async function placeBid(input: {
       status: "active",
       idempotencyKey: input.idempotencyKey,
     }).returning();
+    if (!inserted) return { ok: false, code: BID_REJECTION.CONTENTION, state };
     record = { id: inserted.id, studentId: inserted.studentId, label: input.bidderLabel, amountKobo: inserted.amountKobo.toString(), status: inserted.status, createdAt: inserted.createdAt.getTime() };
   } catch {
     // unique(idempotencyKey) raced — treat as duplicate, no harm done (version already advanced
@@ -223,7 +224,7 @@ export async function settleDueAuctions(now = Date.now()): Promise<{ settled: nu
     const state = toDomainState(auction);
     const winning = (await db.select().from(bids)
       .where(and(eq(bids.auctionId, auction.id), eq(bids.status, "active")))
-      .orderBy(desc(bids.amountKobo), desc(bids.createdAt)))[0];
+      .orderBy(desc(bids.amountKobo), desc(bids.createdAt)))[0]!;
 
     if (!winning) {
       await db.update(auctions).set({ status: "cancelled" }).where(eq(auctions.id, auction.id));
@@ -237,8 +238,8 @@ export async function settleDueAuctions(now = Date.now()): Promise<{ settled: nu
       continue;
     }
 
-    const room = (await db.select().from(rooms).where(eq(rooms.id, auction.roomId)))[0];
-    const property = room ? (await db.select().from(properties).where(eq(properties.id, room.propertyId)))[0] : undefined;
+    const room = (await db.select().from(rooms).where(eq(rooms.id, auction.roomId)))[0]!;
+    const property = room ? (await db.select().from(properties).where(eq(properties.id, room.propertyId)))[0]! : undefined;
     if (!room || !property) continue;
 
     const price = winning.amountKobo;
@@ -257,6 +258,7 @@ export async function settleDueAuctions(now = Date.now()): Promise<{ settled: nu
       status: "pending",
       signedAgreementHash: null,
     }).returning();
+    if (!booking) continue;
 
     const [tx] = await db.insert(transactions).values({
       bookingId: booking.id,
@@ -272,6 +274,7 @@ export async function settleDueAuctions(now = Date.now()): Promise<{ settled: nu
       paystackReference: reference,
       autoReleaseAt: new Date(now + 4 * day),
     }).returning();
+    if (!tx) continue;
 
     await db.update(auctions).set({
       status: "completed", winningStudentId: winning.studentId, version: state.version + 1,
@@ -331,7 +334,7 @@ export async function releaseDueEscrows(now = Date.now()): Promise<{ released: n
 /** Initialize payment for a settled auction win (student-side, from their dashboard). */
 export async function initAuctionCheckout(bookingId: string, email: string): Promise<string | null> {
   const db = getDb();
-  const tx = (await db.select().from(transactions).where(eq(transactions.bookingId, bookingId)))[0];
+  const tx = (await db.select().from(transactions).where(eq(transactions.bookingId, bookingId)))[0]!;
   if (!tx || !tx.paystackReference || tx.status !== "pending") return null;
   return initCheckout({
     transactionId: tx.id,

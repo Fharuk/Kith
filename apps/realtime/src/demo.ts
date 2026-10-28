@@ -25,7 +25,7 @@ export function startDemoAuction(io: Server, engine: AuctionEngine, auctionId: s
     if (!state || (state.status !== "active" && state.status !== "extended")) return;
     if (Date.now() > state.actualEndTime - 500) return;
     if (Math.random() < 0.45) return; // breathing room between opponent bids
-    const opponent = OPPONENTS[Math.floor(Math.random() * OPPONENTS.length)];
+    const opponent = OPPONENTS[Math.floor(Math.random() * OPPONENTS.length)]!;
     if (opponent.id === state.winningStudentId) return; // never bid against yourself
     const steps = 1n + BigInt(Math.floor(Math.random() * 3));
     const amount = state.currentPriceKobo + state.minIncrementKobo * steps;

@@ -15,13 +15,13 @@ export const metadata: Metadata = { title: "Room" };
 export default async function RoomPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const db = getDb();
-  const room = (await db.select().from(rooms).where(eq(rooms.id, id)))[0];
+  const room = (await db.select().from(rooms).where(eq(rooms.id, id)))[0]!;
   if (!room) notFound();
-  const property = (await db.select().from(properties).where(eq(properties.id, room.propertyId)))[0];
+  const property = (await db.select().from(properties).where(eq(properties.id, room.propertyId)))[0]!;
   const photos = await db.select().from(media).where(and(eq(media.ownerType, "room"), eq(media.ownerId, room.id)));
   const propertyPhotos = photos.length ? photos : await db.select().from(media).where(and(eq(media.ownerType, "property"), eq(media.ownerId, property.id)));
-  const auction = (await db.select().from(auctions).where(and(eq(auctions.roomId, room.id), eq(auctions.status, "active"))))[0];
-  const landlord = (await db.select().from(landlordProfiles).where(eq(landlordProfiles.userId, property.landlordId)))[0];
+  const auction = (await db.select().from(auctions).where(and(eq(auctions.roomId, room.id), eq(auctions.status, "active"))))[0]!;
+  const landlord = (await db.select().from(landlordProfiles).where(eq(landlordProfiles.userId, property.landlordId)))[0]!;
 
   return (
     <>
@@ -36,8 +36,8 @@ export default async function RoomPage({ params }: { params: Promise<{ id: strin
         <div className="mt-6 grid gap-12 lg:grid-cols-[1.15fr_0.85fr]">
           <div>
             <div className="relative aspect-[4/3] overflow-hidden rounded-card bg-sand">
-              {propertyPhotos[0] && (
-                <Image src={propertyPhotos[0].url} alt={propertyPhotos[0].alt ?? property.title} width={1200} height={900} priority className="h-full w-full object-cover" />
+              {propertyPhotos[0]! && (
+                <Image src={propertyPhotos[0]!.url} alt={propertyPhotos[0]!.alt ?? property.title} width={1200} height={900} priority className="h-full w-full object-cover" />
               )}
             </div>
             <h1 className="mt-8 text-4xl">{property.title}</h1>
@@ -89,7 +89,7 @@ export default async function RoomPage({ params }: { params: Promise<{ id: strin
             ) : (
               <>
                 <p className="text-xs font-semibold uppercase tracking-[0.16em] text-kith-green-deep">
-                  {room.tier[0].toUpperCase() + room.tier.slice(1)} · fixed price
+                  {room.tier[0]!.toUpperCase() + room.tier.slice(1)} · fixed price
                 </p>
                 <p className="tabular mt-4 font-display text-4xl text-navy">{room.priceKobo !== null ? formatNgn(room.priceKobo) : "—"}</p>
                 <p className="mt-1 text-xs text-ink/55">per academic session · no agency fee, no caution fee</p>

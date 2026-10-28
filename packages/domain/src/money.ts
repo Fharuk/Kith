@@ -20,7 +20,7 @@ export function fromNgnString(input: string): Kobo {
   if (!/^\d+(\.\d{1,2})?$/.test(cleaned)) {
     throw new MoneyError(`Invalid NGN amount: "${input}"`);
   }
-  const [whole, frac = ""] = cleaned.split(".");
+  const [whole = "0", frac = ""] = cleaned.split(".");
   const fracPadded = (frac + "00").slice(0, 2);
   return BigInt(whole) * KOBO_PER_NAIRA + BigInt(fracPadded);
 }

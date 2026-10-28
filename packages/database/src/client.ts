@@ -2,10 +2,15 @@ import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { drizzle as drizzlePg } from "drizzle-orm/postgres-js";
-import { drizzle as drizzlePglite, type PgliteDB } from "drizzle-orm/pglite";
+import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
 import * as schema from "./schema";
 
-export type Db = PgliteDB<typeof schema> | ReturnType<typeof drizzlePg<typeof schema>>;
+/**
+ * One type for the handle. A union of the PGlite and postgres-js drivers would collapse
+ * every builder method into an uninhabitable intersection, so the PGlite shape is
+ * canonical (identical API) and the postgres handle is cast at the boundary.
+ */
+export type Db = ReturnType<typeof drizzlePglite<typeof schema>>;
 
 const require_ = createRequire(import.meta.url);
 
@@ -52,7 +57,7 @@ export function getDb(): Db {
   const url = process.env.DATABASE_URL;
   if (url) {
     const postgres = require_("postgres");
-    return setHandle(drizzlePg(postgres(url, { max: 10 }), { schema }));
+    return setHandle(drizzlePg(postgres(url, { max: 10 }), { schema }) as unknown as Db);
   }
   const { PGlite } = require_("@electric-sql/pglite");
   const dataDir = process.env.PGLITE_DIR ?? path.join(repoRoot(), ".cache", "pglite");

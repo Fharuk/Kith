@@ -34,7 +34,7 @@ async function main() {
       role, email, firstName, lastName, phone: "08012345678",
       passwordHash: hash, pseudonymizedId: generatePseudonymizedId(),
       isVerified: role !== "student" ? true : true,
-    }).returning())[0];
+    }).returning())[0]!;
 
   const student = await mk("student", "student@demo.kith.ng", "Adunola", "Okafor");
   const landlord = await mk("landlord", "landlord@demo.kith.ng", "Alhaji", "Balogun");
@@ -42,7 +42,7 @@ async function main() {
   const admin = await mk("admin", "admin@demo.kith.ng", "Kith", "Admin");
 
   await db.insert(s.studentProfiles).values({
-    userId: student.id, universityId: funaab.id, matricNumber: "U22/AGR/001",
+    userId: student!.id, universityId: funaab!.id, matricNumber: "U22/AGR/001",
     studentEmail: "okaforadunola@stu.funaab.edu.ng", level: "400", faculty: "Agriculture",
     ninHash: createHash("sha256").update("12345678901+demo-pepper").digest("hex"),
     nimcVerified: true, matricVerified: true, biometricVerified: true,
@@ -60,27 +60,27 @@ async function main() {
     address: "12 Alabata Road", city: "Abeokuta", state: "Ogun",
     isPhysicallyVerified: true, verifiedByPorterId: porter.id, verifiedAt: new Date(Date.now() - 12 * day),
     amenities: ["WiFi", "Security", "Generator", "Laundry"],
-  }).returning())[0];
+  }).returning())[0]!;
   const p2 = (await db.insert(s.properties).values({
     landlordId: landlord.id, title: "Akoka Grove Suites",
     description: "Quiet serviced suites behind UNILAG's Akoka campus, walking distance to the faculty of science.",
     address: "4 Grove Close, Akoka", city: "Lagos", state: "Lagos",
     isPhysicallyVerified: true, verifiedByPorterId: porter.id, verifiedAt: new Date(Date.now() - 8 * day),
     amenities: ["WiFi", "AC", "Kitchen", "Security", "Parking"],
-  }).returning())[0];
+  }).returning())[0]!;
   const p3 = (await db.insert(s.properties).values({
     landlordId: landlord.id, title: "Palm Court Studios",
     description: "Elite concierge studios with gym, pool and guaranteed power — for students who want hotel-grade calm.",
     address: "22 Palm Avenue, Yaba", city: "Lagos", state: "Lagos",
     isPhysicallyVerified: true, verifiedByPorterId: porter.id, verifiedAt: new Date(Date.now() - 3 * day),
     amenities: ["WiFi", "AC", "Gym", "Pool", "Security"],
-  }).returning())[0];
+  }).returning())[0]!;
 
   const room = async (propertyId: string, roomNumber: string, roomType: string, tier: s.Room["tier"],
-    saleMode: s.Room["sale_mode"], priceKobo: bigint | null, floor: bigint | null, inc: bigint | null, capacity = 1) =>
+    saleMode: s.Room["saleMode"], priceKobo: bigint | null, floor: bigint | null, inc: bigint | null, capacity = 1) =>
     (await db.insert(s.rooms).values({
       propertyId, roomNumber, roomType, capacity, tier, saleMode, priceKobo, floorPriceKobo: floor, minIncrementKobo: inc,
-    }).returning())[0];
+    }).returning())[0]!;
 
   const rCircle1 = await room(p1.id, "R-101", "Single self-contain", "circle", "auction", null, 4_500_000n, 50_000n);
   await room(p1.id, "R-102", "Single self-contain", "market", "fixed", 7_500_000n, null, null);
@@ -110,7 +110,7 @@ async function main() {
 
   /* confirmed booking + guest pass + escrowed transaction for the demo student */
   const [booking] = await db.insert(s.bookings).values({
-    roomId: (await db.select().from(s.rooms).where(eq(s.rooms.roomNumber, "R-202")))[0].id,
+    roomId: (await db.select().from(s.rooms).where(eq(s.rooms.roomNumber, "R-202")))[0]!.id,
     studentId: student.id, landlordId: landlord.id,
     bookedPriceKobo: 9_000_000n,
     checkInDate: new Date(now + 3 * day), checkOutDate: new Date(now + 368 * day),
@@ -119,14 +119,14 @@ async function main() {
   }).returning();
 
   await db.insert(s.guestPasses).values({
-    bookingId: booking.id,
+    bookingId: booking!.id,
     codeHash: createHash("sha256").update("rotating-demo-code").digest("hex"),
     totpSecretEnc: "enc:demo-secret",
     expiresAt: new Date(now + 368 * day),
   });
 
   await db.insert(s.transactions).values({
-    bookingId: booking.id, studentId: student.id, landlordId: landlord.id,
+    bookingId: booking!.id, studentId: student.id, landlordId: landlord.id,
     amountKobo: 9_000_000n, platformFeeKobo: 1_350_000n, landlordNetKobo: 7_650_000n,
     transactionType: "booking", status: "completed", escrowStatus: "held",
     paystackReference: "KTH-DEMO-0001", autoReleaseAt: new Date(now + 3 * day + day),
@@ -134,13 +134,13 @@ async function main() {
 
   /* porter work queue */
   await db.insert(s.porterTasks).values([
-    { type: "check_in", porterId: porter.id, bookingId: booking.id, status: "assigned" },
+    { type: "check_in", porterId: porter.id, bookingId: booking!.id, status: "assigned" },
     { type: "verify_property", porterId: porter.id, propertyId: p3.id, status: "done", completedAt: new Date(now - 3 * day) },
   ]);
 
   /* notifications + audit trail */
   await db.insert(s.notifications).values([
-    { userId: student.id, channel: "in_app", type: "booking_confirmed", payload: { bookingId: booking.id } },
+    { userId: student.id, channel: "in_app", type: "booking_confirmed", payload: { bookingId: booking!.id } },
     { userId: student.id, channel: "email", type: "verification_complete", payload: {} },
     { userId: landlord.id, channel: "in_app", type: "escrow_held", payload: { amountKobo: "9000000" } },
   ]);
