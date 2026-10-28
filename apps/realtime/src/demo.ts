@@ -78,6 +78,7 @@ async function restart(io: Server, engine: AuctionEngine, auctionId: string) {
     totalBids: 0,
     version: 1,
   };
+  await engine["store"].clearBids(auctionId);
   await engine["store"].setState(auctionId, fresh);
   io.to(`auction:${auctionId}`).emit("auction_state", { state: toWireState(fresh), bids: [] });
   startDemoAuction(io, engine, auctionId);

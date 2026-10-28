@@ -23,6 +23,8 @@ export interface AuctionStore {
   releaseLock(id: string, token: string): Promise<boolean>;
   pushBid(record: BidRecord): Promise<void>;
   recentBids(id: string, limit: number): Promise<BidRecord[]>;
+  /** Drop the bid log for an auction (demo round restart; prod auctions get fresh ids). */
+  clearBids(id: string): Promise<void>;
 }
 
 export class MemoryStore implements AuctionStore {
@@ -56,5 +58,8 @@ export class MemoryStore implements AuctionStore {
   }
   async recentBids(id: string, limit: number) {
     return (this.bids.get(id) ?? []).slice(0, limit);
+  }
+  async clearBids(id: string) {
+    this.bids.delete(id);
   }
 }
