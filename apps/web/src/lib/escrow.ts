@@ -1,6 +1,8 @@
 import { eq, and } from "drizzle-orm";
 import { getDb, transactions, bookings, auditLogs, notifications, users } from "@kith/database";
 import { transition, type EscrowActor } from "@kith/domain";
+import { notifyUser } from "./providers/notify";
+import { formatNgn } from "@kith/domain";
 
 /**
  * Single escrow state-change path (playbook 02). Every transition is validated by the
@@ -33,9 +35,34 @@ export async function moveEscrow(
   });
 
   if (tx.bookingId) {
-    await db.insert(notifications).values([
-      { userId: tx.studentId, channel: "in_app", type: `escrow_${to}`, payload: { transactionId, reason: reason ?? null } },
-      { userId: tx.landlordId, channel: "in_app", type: `escrow_${to}`, payload: { transactionId, reason: reason ?? null } },
+    const [student, landlord] = await Promise.all([
+      db.select().from(users).where(eq(users.id, tx.studentId)).then((r) => r[0]),
+      db.select().from(users).where(eq(users.id, tx.landlordId)).then((r) => r[0]),
+    ]);
+    const gross = formatNgn(tx.amountKobo);
+    const net = formatNgn(tx.landlordNetKobo);
+    const fee = formatNgn(tx.platformFeeKobo);
+    await Promise.all([
+      notifyUser({
+        userId: tx.studentId, type: `escrow_${to}`, payload: { transactionId, reason: reason ?? null },
+        message:
+          to === "released"
+            ? `Kith: your ${gross} booking is complete — the landlord has been paid and your stay is secured.`
+            : `Kith: escrow for your ${gross} booking is now ${to}.`,
+        phone: student?.phone ?? null,
+        email: student?.email ?? null,
+        emailSubject: to === "released" ? "Your Kith stay is confirmed" : `Kith escrow update: ${to}`,
+      }),
+      notifyUser({
+        userId: tx.landlordId, type: `escrow_${to}`, payload: { transactionId, reason: reason ?? null },
+        message:
+          to === "released"
+            ? `Kith: ${net} paid to you for a ${gross} booking (after ${fee} platform fee).`
+            : `Kith: escrow for a ${gross} booking is now ${to}.`,
+        phone: landlord?.phone ?? null,
+        email: landlord?.email ?? null,
+        emailSubject: to === "released" ? "Payout released — Kith escrow" : `Kith escrow update: ${to}`,
+      }),
     ]);
   }
   return to;

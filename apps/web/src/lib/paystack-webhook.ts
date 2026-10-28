@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { getDb, transactions, bookings, auditLogs, notifications } from "@kith/database";
+import { getDb, transactions, bookings, auditLogs, users } from "@kith/database";
 import {
   verifyWebhookSignature,
   parseChargeSuccess,
@@ -8,6 +8,7 @@ import {
   type ChargeSuccessData,
 } from "@kith/paystack";
 import { getPaystack } from "./paystack";
+import { notifyUser } from "./providers/notify";
 import { moveEscrow } from "./escrow";
 import { createGuestPass } from "./guest-pass";
 
@@ -85,15 +86,24 @@ export async function confirmChargeSuccess(data: ChargeSuccessData): Promise<Web
     if (booking && booking.status === "pending") {
       await db.update(bookings).set({ status: "confirmed" }).where(eq(bookings.id, booking.id));
       await createGuestPass(booking.id);
-      await db.insert(notifications).values([
-        {
-          userId: tx.studentId, channel: "in_app", type: "booking_confirmed",
-          payload: { bookingId: booking.id, transactionId: tx.id, message: "Payment received — your room is confirmed and your guest pass is live." },
-        },
-        {
-          userId: tx.landlordId, channel: "in_app", type: "booking_confirmed",
-          payload: { bookingId: booking.id, transactionId: tx.id, message: "Booking paid — funds held in escrow until check-in." },
-        },
+      const [student, landlord] = await Promise.all([
+        db.select().from(users).where(eq(users.id, tx.studentId)).then((r) => r[0]),
+        db.select().from(users).where(eq(users.id, tx.landlordId)).then((r) => r[0]),
+      ]);
+      await Promise.all([
+        notifyUser({
+          userId: tx.studentId, type: "booking_confirmed",
+          payload: { bookingId: booking.id, transactionId: tx.id },
+          message: `Kith: payment received. Your room is confirmed — your rotating guest pass is live at /passes.`,
+          phone: student?.phone ?? null, email: student?.email ?? null,
+          emailSubject: "Your Kith room is confirmed",
+        }),
+        notifyUser({
+          userId: tx.landlordId, type: "booking_confirmed",
+          payload: { bookingId: booking.id, transactionId: tx.id },
+          message: `Kith: a booking was paid. Funds are held in escrow until porter-confirmed check-in (or 24h).`,
+          phone: landlord?.phone ?? null, email: landlord?.email ?? null,
+        }),
       ]);
     }
     await db.insert(auditLogs).values({

@@ -12,6 +12,8 @@ import {
 import { signIn } from "@/auth";
 import { requireUser } from "@/lib/session";
 import { roleHome } from "@/middleware";
+import { getNimcProvider } from "@/lib/providers/nimc";
+import { notifyUser } from "@/lib/providers/notify";
 
 const registerSchema = z.object({
   role: z.enum(["student", "landlord", "porter"]),
@@ -72,12 +74,39 @@ export async function loginAction(_prev: unknown, formData: FormData) {
 /* ── verification gates (mock providers behind interfaces — playbook 03) ── */
 export async function submitNin(formData: FormData) {
   const user = await requireUser();
-  const nin = String(formData.get("nin") ?? "");
+  const nin = String(formData.get("nin") ?? "").trim();
+  const dateOfBirth = String(formData.get("dateOfBirth") ?? "").trim();
   if (!/^\d{11}$/.test(nin)) return { error: "NIN must be exactly 11 digits" };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth)) return { error: "Date of birth is required (YYYY-MM-DD)" };
+
   const db = getDb();
+
+  // NIMC driver: mock until NIMC_API_KEY is configured (env-only swap).
+  const [firstName, ...rest] = (user.name ?? "").split(" ");
+  const nimc = getNimcProvider();
+  const result = await nimc.verify({
+    nin,
+    firstName: firstName || "Student",
+    lastName: rest.join(" ") || "Kith",
+    dateOfBirth,
+  });
+
+  if (!result.verified) {
+    const reason =
+      result.failureReason === "not_found"
+        ? "That NIN was not found at NIMC — check the digits and try again"
+        : result.failureReason === "name_mismatch"
+          ? "The name on your NIMC record does not match your Kith profile"
+          : "NIMC could not confirm this NIN right now — try again in a moment";
+    return { error: reason };
+  }
+
+  // Only a salted hash is ever persisted; the NIN itself never touches the database.
   const ninHash = createHash("sha256").update(`${nin}+${process.env.NIN_PEPPER ?? "dev-pepper"}`).digest("hex");
-  await db.update(studentProfiles).set({ ninHash, nimcVerified: true, currentStep: "matric" })
-    .where(eq(studentProfiles.userId, user.id));
+  // Date of birth is used only for the NIMC name match above — it is never persisted.
+  await db.update(studentProfiles).set({
+    ninHash, nimcVerified: true, currentStep: "matric",
+  }).where(eq(studentProfiles.userId, user.id));
   return { ok: true };
 }
 

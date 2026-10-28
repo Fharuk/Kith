@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck · unit tests · realtime smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck (strict, whole workspace)
+        run: pnpm -r typecheck
+
+      - name: Unit tests
+        run: |
+          pnpm --filter @kith/domain test
+          pnpm --filter @kith/paystack test
+          pnpm --filter @kith/web test
+
+      # The auction engine is exercised over a real socket, not mocks: boot the service,
+      # run the smoke harness (join → bid → soft-close → reject-then-accept), then kill it.
+      - name: Realtime auction smoke
+        run: |
+          pnpm --filter @kith/realtime dev &
+          SERVER=$!
+          for i in $(seq 1 40); do
+            if curl -fsS http://localhost:3001/healthz >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          node apps/realtime/test/smoke.mjs
+          kill $SERVER
+
+  db:
+    name: Migrations + seed against embedded Postgres
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9.15.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      # PGlite stands in for Postgres in CI exactly as it does locally: real SQL, real
+      # DDL, real constraints — no DATABASE_URL required.
+      - name: Seed (idempotent — runs migrations, then demo data)
+        run: pnpm --filter @kith/database db:seed
+      - name: Re-run seed to prove idempotency
+        run: pnpm --filter @kith/database db:seed

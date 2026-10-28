@@ -49,9 +49,13 @@ export function Wizard({ isVerified, gates, universities }: {
             <label className="text-xs font-medium text-ink/70" htmlFor="nin">National Identification Number</label>
             <input id="nin" name="nin" inputMode="numeric" maxLength={11} required placeholder="12345678901" className={field} />
           </div>
+          <div className="flex-1 min-w-44">
+            <label className="text-xs font-medium text-ink/70" htmlFor="dateOfBirth">Date of birth</label>
+            <input id="dateOfBirth" name="dateOfBirth" type="date" required className={field} />
+          </div>
           <button disabled={busy} className="rounded-full bg-navy px-6 py-3 text-sm font-semibold text-paper disabled:opacity-50">Verify with NIMC</button>
         </form>
-        <p className="mt-2 text-xs text-ink/50">We store a salted hash — never the number itself.</p>
+        <p className="mt-2 text-xs text-ink/50">NIMC matches your name and date of birth. We store a salted hash — never the number itself, and never your date of birth.</p>
       </Gate>
 
       <Gate n={2} done={gates.matric} icon={<IconMailCheck width={22} height={22} />} title="University & matric">
