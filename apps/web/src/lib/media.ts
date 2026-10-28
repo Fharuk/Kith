@@ -155,7 +155,9 @@ export async function attachMedia(input: {
 }
 
 export async function readImageFile(storageKey: string): Promise<Buffer> {
-  return readFile(filePathFor(storageKey));
+  // turbopackIgnore keeps the bundle from tracing the whole repo: the path is computed at
+  // runtime from UPLOAD_DIR, so static analysis cannot scope it.
+  return readFile(/*turbopackIgnore: true*/ filePathFor(storageKey));
 }
 
 /** Public photos are cacheable forever; evidence is not cacheable at all. */

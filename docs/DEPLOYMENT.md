@@ -1,9 +1,42 @@
 # Deploying Kith
 
+## 0. What is already live
+
+| Piece | Where | Status |
+| --- | --- | --- |
+| Web app | Vercel project `kith` (team `fharuks-projects`, root `apps/web`) | **READY** — production build `234fba1`, `https://kith-fharuks-projects.vercel.app` (`https://kith-phi-smoky.vercel.app`) |
+| Database | Supabase `oinbukfmryzbeijbbqgi` (`eu-west-1`, PG 17) | schema + demo seed applied, login role `kith_app` |
+| Realtime relay | — | **not deployed yet** (§3) — UI degrades to polling |
+| Worker | Vercel Cron (daily) + `.github/workflows/worker.yml` (5 min) | cron installed; the GitHub workflow no-ops until the `CRON_SECRET` repo secret exists |
+
+Demo logins (seeded): `student@demo.kith.ng` / `landlord@demo.kith.ng` / `porter@demo.kith.ng` /
+`admin@demo.kith.ng`, password `demo1234` — porter TOTP secret `demo-secret`.
+
+**Verify the live site** (run from a normal network; this build sandbox blocks `vercel.app`
+egress, so the HTTP pass below has *not* been executed against the deployment):
+
+```bash
+BASE=https://kith-fharuks-projects.vercel.app
+curl -sS -o /dev/null -w '%{http_code}\n' $BASE/ $BASE/find-a-room $BASE/login
+curl -sS $BASE/api/health
+BASE=$BASE SMOKE_EMAIL=student@demo.kith.ng SMOKE_PASSWORD=demo1234 pnpm smoke --auth
+```
+
+If `/api/health` reports the database as unreachable, the pooler string or the `kith_app`
+password is wrong — check `DATABASE_URL` in the Vercel project settings (§2) and reconnect.
+
+---
+
+## Overview
+
 Kith is two deployables — a Next.js 16 web app (`apps/web`) and a Socket.io realtime relay
 (`apps/realtime`) — over one PostgreSQL database. Everything third-party is behind an
 interface with a mock implementation, so the site is fully walkable with **zero vendor keys**
 and each key you add flips exactly one integration.
+
+**These credentials are checked in nowhere.** The generated secrets for the live project are in
+Vercel env vars and in the Supabase dashboard; rotate them if this repo's history ever holds a
+copy.
 
 ```
 Vercel (apps/web)  ──►  Supabase Postgres (pooler)
@@ -26,6 +59,14 @@ PostgreSQL 17). All 22 tables, enums, indexes and foreign keys are applied.
 | --- | --- | --- |
 | Runtime (Vercel) | pooler, port `6543`, `?pgbouncer=true` | serverless-safe, many connections |
 | Migrations / scripts | direct, port `5432` | no pooler in the middle |
+
+**Hardening applied to this project**
+
+- a dedicated login role `kith_app` owns the app's grants (`usage` on schema `public`, CRUD on
+  tables, `usage` on sequences, plus default privileges for future tables);
+- `revoke all on schema public … from anon, authenticated` — the Supabase Data API cannot read
+  or write these tables even with the publishable key. Only the app's server-side pooler
+  connection can.
 
 **Applying migrations to a fresh project**
 
@@ -62,9 +103,18 @@ whole worker: auction settlement, 24h escrow auto-release, payout reconciliation
 push, and the notification outbox. It is guarded by `CRON_SECRET` and single-flighted with a
 Postgres advisory lock, so overlapping ticks are free.
 
-> Vercel Hobby allows daily crons only. The money worker needs minute granularity — use a
-> Pro plan, or point an external scheduler (`cron-job.org`, GitHub Actions schedule, k8s
-> CronJob) at the same URL with `Authorization: Bearer $CRON_SECRET`.
+**Scheduling on the current plan.** This project is on Hobby, which rejects anything faster
+than once a day, so `vercel.json` runs `/api/cron/settle` once daily (`5 0 * * *`). Five-minute
+granularity comes from `.github/workflows/worker.yml`, which POSTs the same endpoint every five
+minutes with `Authorization: Bearer ${{ secrets.CRON_SECRET }}`:
+
+```bash
+gh secret set CRON_SECRET --repo Fharuk/Kith    # paste the same value as the Vercel env var
+```
+
+Until that secret exists the workflow exits green without calling the endpoint (by design, so
+a fork cannot hammer production). On a Pro plan, delete the workflow and set the cron back to
+`* * * * *`.
 
 ---
 
@@ -149,3 +199,15 @@ status codes and content markers, because a 200 rendering an error boundary is s
 - **Rate limiting** is per-process memory. On Vercel's multi-instance runtime, swap
   `MemoryLimitStore` for Upstash Redis (one file, same interface) for a global budget.
 - **PGlite** is a development convenience, not a production database.
+- **Uploads on Vercel are ephemeral.** `UPLOAD_DIR=/tmp/uploads` is per-lambda scratch: a file
+  written by one instance is not visible to another, and it disappears on cold start. Photos
+  work in the local build and for the same warm instance only. Production needs object storage
+  — S3/R2/Supabase Storage behind `lib/media.ts`'s `filePathFor`/`readImageFile` pair (two
+  functions, no call-site changes).
+- **Realtime is not deployed with the web app.** Vercel's serverless runtime cannot hold a
+  Socket.io server, so the bidding/notification sockets need `apps/realtime` on Render/Fly
+  (§3). Without it the UI still works — bids refetch — it just is not live.
+- **`NEXT_PUBLIC_SOCKET_URL` is unset on Vercel** for that reason; set it when §3 lands, then
+  redeploy (public env vars are inlined at build time).
+- **Visual QA is by rendered HTML, not a browser** — Playwright's browser download is blocked in
+  the build environment. `pnpm smoke` asserts status codes *and* content markers.
