@@ -38,8 +38,22 @@ export function PassCard({
   const secondsLeft = expiresAt ? Math.max(0, Math.ceil((expiresAt - now) / 1000)) : null;
 
   return (
-    <article className="overflow-hidden rounded-card bg-navy text-paper shadow-lift">
-      <div className="grid sm:grid-cols-[1fr_auto]">
+    <article
+      className="relative overflow-hidden rounded-card bg-navy text-paper shadow-lift"
+      style={{
+        // liquid-glass: a faint refraction sheen across the pass, specular top edge
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.16), inset 0 -1px 0 rgba(0,0,0,0.25), 0 24px 48px rgba(18,32,63,0.28)",
+      }}
+    >
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(120% 90% at 12% -10%, rgba(41,171,226,0.22), transparent 55%), radial-gradient(90% 80% at 92% 110%, rgba(76,175,80,0.20), transparent 58%)",
+        }}
+      />
+      <div className="relative grid sm:grid-cols-[1fr_auto]">
         <div className="p-8">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-paper/55">{status.replace("_", " ")}</p>
           <h2 className="mt-2 font-display text-2xl">{propertyTitle} · {roomNumber}</h2>
