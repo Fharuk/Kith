@@ -16,6 +16,7 @@ import { getNimcProvider } from "@/lib/providers/nimc";
 import { notifyUser } from "@/lib/providers/notify";
 import { emailGateFailure, issueEmailVerification } from "@/lib/email-verification";
 import { limitMessage, recordVerificationAttempt, verificationBudget } from "@/lib/verification-limits";
+import { applyReferralCode } from "@/lib/referrals";
 
 const registerSchema = z.object({
   role: z.enum(["student", "landlord", "porter"]),
@@ -23,12 +24,13 @@ const registerSchema = z.object({
   lastName: z.string().min(2).max(40),
   email: z.string().email(),
   password: z.string().min(10, "Use at least 10 characters"),
+  ref: z.string().max(24).optional(),
 });
 
 export async function registerAction(_prev: unknown, formData: FormData) {
   const parsed = registerSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0]!?.message ?? "Invalid input" };
-  const { role, firstName, lastName, email, password } = parsed.data;
+  const { role, firstName, lastName, email, password, ref } = parsed.data;
   const db = getDb();
 
   const existing = await db.select().from(users).where(eq(users.email, email.toLowerCase()));
@@ -55,6 +57,8 @@ export async function registerAction(_prev: unknown, formData: FormData) {
 
   // The address is a claim until it is confirmed — send the single-use link now.
   await issueEmailVerification({ userId: user.id, email: user.email, reason: "signup" });
+
+  if (ref) await applyReferralCode({ code: ref, refereeId: user.id }).catch(() => false);
 
   try {
     await signIn("credentials", { email: user.email, password, redirectTo: roleHome(role) });

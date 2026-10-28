@@ -13,6 +13,7 @@ import { notifyUser } from "./providers/notify";
 import { applyTransferOutcome } from "./payouts";
 import { moveEscrow } from "./escrow";
 import { createGuestPass } from "./guest-pass";
+import { qualifyReferralForStudent } from "./referrals";
 
 /**
  * Paystack event processing — the ONLY path that turns a payment into confirmed state.
@@ -110,6 +111,8 @@ export async function confirmChargeSuccess(data: ChargeSuccessData): Promise<Web
     if (booking && booking.status === "pending") {
       await db.update(bookings).set({ status: "confirmed" }).where(eq(bookings.id, booking.id));
       await createGuestPass(booking.id);
+      // Growth loop: the referee's first paid booking is what makes a referral real.
+      await qualifyReferralForStudent(booking.studentId);
       const [student, landlord] = await Promise.all([
         db.select().from(users).where(eq(users.id, tx.studentId)).then((r) => r[0]),
         db.select().from(users).where(eq(users.id, tx.landlordId)).then((r) => r[0]),

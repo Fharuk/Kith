@@ -4,8 +4,8 @@ import { RegisterForm } from "./register-form";
 
 export const metadata: Metadata = { title: "Create your account", description: "Join Kith — students, landlords and porters." };
 
-export default async function RegisterPage({ searchParams }: { searchParams: Promise<{ role?: string }> }) {
-  const { role } = await searchParams;
+export default async function RegisterPage({ searchParams }: { searchParams: Promise<{ role?: string; ref?: string }> }) {
+  const { role, ref } = await searchParams;
   return (
     <>
       <SiteNav />
@@ -15,7 +15,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
           One account per person, tied to a real identity. Students complete four verification
           gates; landlords and porters are reviewed by our ops team.
         </p>
-        <RegisterForm initialRole={role === "landlord" || role === "porter" ? role : "student"} />
+        <RegisterForm initialRole={role === "landlord" || role === "porter" ? role : "student"} referralCode={ref} />
       </main>
     </>
   );

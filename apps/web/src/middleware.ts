@@ -16,6 +16,7 @@ const ROLE_GUARDS: Record<string, string[]> = {
   "/admin": ["admin"],
   "/account": ["student", "landlord", "porter", "admin"],
   "/roommates": ["student"],
+  "/referrals": ["student"],
 };
 
 /**
@@ -110,7 +111,7 @@ export function roleHome(role: string) {
 export const config = {
   matcher: [
     "/dashboard/:path*", "/verify/:path*", "/passes/:path*", "/landlord/:path*", "/porter/:path*", "/admin/:path*",
-    "/account/:path*", "/roommates/:path*",
+    "/account/:path*", "/roommates/:path*", "/referrals/:path*",
     "/api/:path*",
   ],
 };
