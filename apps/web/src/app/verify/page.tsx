@@ -18,7 +18,7 @@ export default async function VerifyPage() {
   return (
     <>
       <SiteNav />
-      <main className="mx-auto max-w-3xl px-6 py-16">
+      <main id="main" className="mx-auto max-w-3xl px-6 py-16">
         <h1 className="text-4xl sm:text-5xl">Four gates. Ten minutes. Once.</h1>
         <p className="mt-4 max-w-xl text-base leading-relaxed text-ink/70">
           Verification is what makes Kith different: no anonymous bidders, no fake listings, no

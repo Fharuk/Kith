@@ -1,4 +1,5 @@
 import { currentUser } from "@/lib/session";
+import { emailGateFailure } from "@/lib/email-verification";
 import { placeBid, toWireState, loadAuction, settleDueAuctions } from "@/lib/auction-service";
 
 export const runtime = "nodejs";
@@ -35,6 +36,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     return Response.json({ ok: false, code: "invalid_amount" }, { status: 400 });
   }
   if (idempotencyKey.length < 8) return Response.json({ ok: false, code: "invalid_idempotency_key" }, { status: 400 });
+
+  const unconfirmed = await emailGateFailure(user.id);
+  if (unconfirmed) return Response.json({ ok: false, code: "email_unconfirmed", message: unconfirmed }, { status: 403 });
 
   const now = Date.now();
   if (rateLimited(user.id, now)) return Response.json({ ok: false, code: "rate_limited" }, { status: 429 });

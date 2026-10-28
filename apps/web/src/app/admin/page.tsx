@@ -4,6 +4,10 @@ import { formatNgn } from "@kith/domain";
 import { requireUser } from "@/lib/session";
 import { SiteNav } from "@/components/site-nav";
 import { SiteFooter } from "@/components/site-footer";
+import { AdminDisputeCard } from "@/components/admin-dispute-card";
+import { openDisputes } from "@/lib/disputes";
+import { openTaskQueue } from "@/lib/porter-tasks";
+import { AdminTaskRow } from "@/components/admin-task-row";
 
 export const metadata = { title: "Admin" };
 
@@ -22,13 +26,15 @@ export default async function AdminPage() {
   const byRole = (r: string) => allUsers.filter((u) => u.role === r).length;
   const gmv = txs.reduce((a, t) => a + (t.amountKobo ?? 0n), 0n);
   const fees = txs.reduce((a, t) => a + (t.platformFeeKobo ?? 0n), 0n);
+  const disputeQueue = await openDisputes();
+  const taskQueue = await openTaskQueue();
   const unverifiedStudents = students.filter((s) => !(s.nimcVerified && s.matricVerified && s.biometricVerified)).length;
   void pendingVerifications;
 
   return (
     <>
       <SiteNav />
-      <main className="mx-auto max-w-6xl px-6 py-16">
+      <main id="main" className="mx-auto max-w-6xl px-6 py-16">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-clay">Signed in as {user.email}</p>
         <h1 className="mt-2 text-4xl">Platform overview.</h1>
 
@@ -68,6 +74,57 @@ export default async function AdminPage() {
               ))}
             </ul>
           </div>
+        </section>
+
+        <section className="mt-12">
+          <div className="flex items-center justify-between">
+            <h2 className="font-sans text-sm font-semibold uppercase tracking-[0.14em] text-ink/55">Porter work queue</h2>
+            <span className="text-xs text-ink/50">{taskQueue.tasks.length} open · {taskQueue.porters.length} porters</span>
+          </div>
+          <div className="mt-4 space-y-2">
+            {taskQueue.tasks.length === 0 && (
+              <p className="rounded-card bg-sand/60 p-6 text-sm text-ink/60 hairline">No open tasks. New listings queue a property visit automatically.</p>
+            )}
+            {taskQueue.tasks.map((t) => {
+              const property = taskQueue.props.find((p) => p.id === t.propertyId);
+              const porter = taskQueue.porters.find((p) => p.id === t.porterId);
+              return (
+                <AdminTaskRow
+                  key={t.id}
+                  taskId={t.id}
+                  label={`${t.type.replace("_", " ")}${property ? ` · ${property.title}` : ""}`}
+                  detail={`${property ? `${property.address}, ${property.city}` : "No property"} · ${t.status}${porter ? ` · ${porter.firstName} ${porter.lastName}` : ""}`}
+                  porters={taskQueue.porters.map((p) => ({ id: p.id, name: `${p.firstName} ${p.lastName}` }))}
+                  currentPorterId={t.porterId}
+                />
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="mt-12">
+          <div className="flex items-center justify-between">
+            <h2 className="font-sans text-sm font-semibold uppercase tracking-[0.14em] text-ink/55">Open disputes</h2>
+            <span className="text-xs text-ink/50">{disputeQueue.length} awaiting settlement</span>
+          </div>
+          {disputeQueue.length === 0 ? (
+            <p className="mt-4 rounded-card bg-sand/60 p-6 text-sm text-ink/60 hairline">
+              No open cases. Disputed payments are frozen here until you settle them.
+            </p>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {disputeQueue.map(({ dispute, transaction }) => (
+                <AdminDisputeCard
+                  key={dispute.id}
+                  disputeId={dispute.id}
+                  reason={dispute.reason}
+                  amountLabel={formatNgn(transaction?.amountKobo ?? 0n)}
+                  landlordNetLabel={formatNgn(transaction?.landlordNetKobo ?? 0n)}
+                  openedLabel={new Date(dispute.createdAt).toLocaleDateString("en-NG", { day: "numeric", month: "short" })}
+                />
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="mt-12">

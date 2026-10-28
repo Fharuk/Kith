@@ -1,0 +1,39 @@
+name: worker
+
+# The money worker (auction settlement, escrow auto-release, payout push, notification outbox)
+# wants a tick every minute. Vercel's Hobby plan only allows daily cron jobs, so GitHub Actions
+# drives the schedule instead and the endpoint stays idempotent under an advisory lock — a
+# missed or duplicated tick is harmless. The daily Vercel cron stays as a backstop.
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: worker
+  cancel-in-progress: false
+
+jobs:
+  settle:
+    name: settle pass
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: POST /api/cron/settle
+        env:
+          BASE_URL: ${{ vars.KITH_BASE_URL || 'https://kith-fharuks-projects.vercel.app' }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "CRON_SECRET repo secret is not set — skipping (set it to enable the worker)."
+            exit 0
+          fi
+          code=$(curl -sS -o /tmp/out.json -w '%{http_code}' -X POST "$BASE_URL/api/cron/settle" \
+            -H "authorization: Bearer $CRON_SECRET")
+          cat /tmp/out.json || true
+          echo
+          # 202 = another pass was in flight (fine); anything 5xx should fail the run.
+          case "$code" in
+            200|202) echo "ok ($code)";;
+            *) echo "worker call failed with $code"; exit 1;;
+          esac

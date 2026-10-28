@@ -1,12 +1,17 @@
 import Link from "next/link";
 import { eq, desc } from "drizzle-orm";
-import { getDb, bids, bookings, studentProfiles, rooms, properties } from "@kith/database";
+import { getDb, bids, bookings, studentProfiles, rooms, properties, transactions, users } from "@kith/database";
 import { formatNgn } from "@kith/domain";
 import { requireUser } from "@/lib/session";
 import { SiteNav } from "@/components/site-nav";
 import { SiteFooter } from "@/components/site-footer";
 import { IconGavel, IconKey, IconShieldCheck, IconArrowRight } from "@/components/icons";
+import { DisputeForm } from "@/components/dispute-form";
+import { needsEmailConfirmation } from "@/lib/email-verification";
+import { ResendEmailButton } from "@/app/verify-email/verify-email-form";
 import { PayNowButton } from "./pay-now-button";
+import { MaintenanceForm } from "@/components/maintenance-form";
+import { studentTickets } from "@/lib/maintenance";
 
 export const metadata = { title: "Student dashboard" };
 
@@ -21,13 +26,25 @@ export default async function StudentDashboard() {
     .innerJoin(rooms, eq(bookings.roomId, rooms.id))
     .innerJoin(properties, eq(rooms.propertyId, properties.id))
     .where(eq(bookings.studentId, user.id));
+  const [me] = await db.select({ emailVerifiedAt: users.emailVerifiedAt, isVerified: users.isVerified }).from(users).where(eq(users.id, user.id));
+  const emailPending = needsEmailConfirmation(me ?? {});
+  const myTransactions = await db.select().from(transactions).where(eq(transactions.studentId, user.id));
+  const activeStay = myBookings.find((b) => ["confirmed", "checked_in"].includes(b.booking.status));
+  const myTickets = await studentTickets(user.id);
 
   const gates = (profile?.nimcVerified ? 1 : 0) + (profile?.matricVerified ? 1 : 0) + (profile?.biometricVerified ? 1 : 0);
 
   return (
     <>
       <SiteNav />
-      <main className="mx-auto max-w-6xl px-6 py-16">
+      <main id="main" className="mx-auto max-w-6xl px-6 py-16">
+        {emailPending && (
+          <div className="mb-8 rounded-card bg-clay/10 px-6 py-5 hairline">
+            <p className="text-sm font-semibold text-ink">Confirm your email to unlock bidding and booking.</p>
+            <p className="mt-1 text-xs text-ink/60">We sent you a link when you signed up. Nothing else is blocked.</p>
+            <ResendEmailButton />
+          </div>
+        )}
         <div className="flex flex-wrap items-end justify-between gap-6">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-clay">{user.pseudonymizedId}</p>
@@ -72,6 +89,15 @@ export default async function StudentDashboard() {
                       </Link>
                     )}
                   </div>
+                  {(() => {
+                    const tx = myTransactions.find((t) => t.bookingId === booking.id);
+                    if (!tx) return null;
+                    if (tx.escrowStatus === "disputed") {
+                      return <p className="w-full text-[11px] font-semibold text-clay">Payment under dispute — Kith operations is reviewing it.</p>;
+                    }
+                    if (tx.escrowStatus !== "held" && tx.escrowStatus !== "released") return null;
+                    return <div className="w-full"><DisputeForm transactionId={tx.id} /></div>;
+                  })()}
                 </li>
               ))}
             </ul>
@@ -106,6 +132,27 @@ export default async function StudentDashboard() {
             </p>
           </div>
         )}
+        {activeStay && (
+          <section className="mt-12 grid gap-6 lg:grid-cols-[1fr,0.8fr]">
+            <MaintenanceForm bookingId={activeStay.booking.id} propertyTitle={activeStay.property.title} />
+            <div className="rounded-card bg-sand/50 p-5 hairline">
+              <h2 className="font-sans text-sm font-semibold uppercase tracking-[0.14em] text-ink/55">Your reports</h2>
+              {myTickets.length === 0 ? (
+                <p className="mt-3 text-sm text-ink/60">Nothing open. If something breaks, report it here and your landlord gets an SLA clock.</p>
+              ) : (
+                <ul className="mt-3 space-y-2">
+                  {myTickets.map(({ ticket }) => (
+                    <li key={ticket.id} className="rounded-field bg-paper px-4 py-3 text-sm">
+                      <p className="font-medium text-navy">{ticket.category} · {ticket.status.replace("_", " ")}</p>
+                      <p className="text-xs text-ink/55">{ticket.description.slice(0, 90)}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
+        )}
+
       </main>
       <SiteFooter />
     </>

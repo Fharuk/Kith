@@ -23,7 +23,7 @@ export default async function PassesPage() {
   return (
     <>
       <SiteNav />
-      <main className="mx-auto max-w-4xl px-6 py-16">
+      <main id="main" className="mx-auto max-w-4xl px-6 py-16">
         <h1 className="text-4xl sm:text-5xl">Your guest passes.</h1>
         <p className="mt-3 max-w-xl text-base text-ink/70">
           The code rotates every five minutes. Show it at the gate — a porter confirms it and your

@@ -12,12 +12,13 @@ const roles = [
 const inputCls =
   "mt-1.5 w-full rounded-field bg-paper px-4 py-3 text-sm shadow-[inset_0_0_0_1px_var(--color-hairline)] outline-none transition-shadow focus:shadow-[inset_0_0_0_2px_var(--color-kith-blue)]";
 
-export function RegisterForm({ initialRole }: { initialRole: "student" | "landlord" | "porter" }) {
+export function RegisterForm({ initialRole, referralCode }: { initialRole: "student" | "landlord" | "porter"; referralCode?: string }) {
   const [role, setRole] = useState(initialRole);
   const [state, action, pending] = useActionState(registerAction, null as { error?: string } | null);
 
   return (
     <form action={action} className="mt-10 space-y-6">
+      {referralCode && <input type="hidden" name="ref" value={referralCode} />}
       <fieldset>
         <legend className="text-sm font-medium text-ink">I am a…</legend>
         <div className="mt-2 grid gap-3 sm:grid-cols-3">

@@ -8,6 +8,7 @@ export type SessionUser = {
   role: "student" | "landlord" | "porter" | "admin";
   pseudonymizedId: string;
   isVerified: boolean;
+  sessionVersion: number;
 };
 
 /** Server-side principal. Throws nothing; returns null when anonymous. */
@@ -22,6 +23,7 @@ export const currentUser = cache(async (): Promise<SessionUser | null> => {
     role: (u.role ?? "student") as SessionUser["role"],
     pseudonymizedId: (u.pseudonymizedId ?? "") as string,
     isVerified: Boolean(u.isVerified),
+    sessionVersion: Number(u.sessionVersion ?? 0),
   };
 });
 

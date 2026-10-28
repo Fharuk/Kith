@@ -17,7 +17,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   return (
     <>
       <SiteNav />
-      <main className="mx-auto grid max-w-6xl gap-14 px-6 py-20 lg:grid-cols-[1fr_0.9fr]">
+      <main id="main" className="mx-auto grid max-w-6xl gap-14 px-6 py-20 lg:grid-cols-[1fr_0.9fr]">
         <div>
           <h1 className="text-4xl sm:text-5xl">Welcome back.</h1>
           <p className="mt-4 max-w-md text-base leading-relaxed text-ink/70">

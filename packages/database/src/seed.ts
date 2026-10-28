@@ -91,11 +91,19 @@ async function main() {
 
   /* media (webp, served from apps/web/public/img) */
   const mediaRows = [
-    { ownerType: "property", ownerId: p1.id, url: "/img/hero-campus.webp", alt: "Freedom Hall courtyard" },
-    { ownerType: "property", ownerId: p2.id, url: "/img/room-market.webp", alt: "Akoka Grove suite interior" },
-    { ownerType: "property", ownerId: p3.id, url: "/img/room-elite.webp", alt: "Palm Court studio interior" },
-    { ownerType: "room", ownerId: rCircle1.id, url: "/img/hero-campus.webp", alt: "R-101 block exterior" },
-    { ownerType: "room", ownerId: rCircle2.id, url: "/img/room-market.webp", alt: "R-201 interior" },
+    // Each property carries a three-shot gallery: exterior, room, shared space.
+    { ownerType: "property", ownerId: p1.id, url: "/img/hero-campus.webp", alt: "Freedom Hall courtyard at golden hour" },
+    { ownerType: "property", ownerId: p1.id, url: "/img/courtyard.webp", alt: "Freedom Hall paved courtyard and laundry line" },
+    { ownerType: "property", ownerId: p1.id, url: "/img/bedroom.webp", alt: "Single room with study desk at Freedom Hall" },
+    { ownerType: "property", ownerId: p2.id, url: "/img/room-market.webp", alt: "Akoka Grove self-contained room" },
+    { ownerType: "property", ownerId: p2.id, url: "/img/bedroom.webp", alt: "Akoka Grove bed and wardrobe" },
+    { ownerType: "property", ownerId: p2.id, url: "/img/lounge.webp", alt: "Akoka Grove shared lounge" },
+    { ownerType: "property", ownerId: p3.id, url: "/img/room-elite.webp", alt: "Palm Court executive studio" },
+    { ownerType: "property", ownerId: p3.id, url: "/img/lounge.webp", alt: "Palm Court residents' lounge" },
+    { ownerType: "property", ownerId: p3.id, url: "/img/courtyard.webp", alt: "Palm Court grounds" },
+    { ownerType: "room", ownerId: rCircle1.id, url: "/img/hero-campus.webp", alt: "Room R-101 block exterior" },
+    { ownerType: "room", ownerId: rCircle2.id, url: "/img/bedroom.webp", alt: "Room R-201 interior" },
+    { ownerType: "room", ownerId: rCircle1.id, url: "/img/courtyard.webp", alt: "Room R-101 courtyard access" },
   ];
   await db.insert(s.media).values(mediaRows.map((m, i) => ({ ...m, format: "webp", sort: i })));
 

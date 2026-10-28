@@ -34,7 +34,7 @@ export default async function AuctionRoomPage({ params }: { params: Promise<{ id
   return (
     <>
       <SiteNav />
-      <main className="mx-auto max-w-6xl px-5 pb-24 pt-10 sm:px-8">
+      <main id="main" className="mx-auto max-w-6xl px-5 pb-24 pt-10 sm:px-8">
         <nav className="text-xs text-ink/50" aria-label="Breadcrumb">
           <Link href="/rooms" className="hover:text-navy">Rooms</Link>
           <span className="mx-2">/</span>

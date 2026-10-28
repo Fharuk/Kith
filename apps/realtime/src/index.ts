@@ -7,6 +7,7 @@ import { AuctionEngine, type Principal } from "./engine";
 import { MemoryStore } from "./store";
 import { toWireState } from "./wire";
 import { startDemoAuction } from "./demo";
+import { createOriginChecker } from "./cors";
 
 const PORT = Number(process.env.PORT ?? 3001);
 const CORS_ALLOW = (process.env.CORS_ORIGINS ?? "http://localhost:3000")
@@ -14,20 +15,7 @@ const CORS_ALLOW = (process.env.CORS_ORIGINS ?? "http://localhost:3000")
   .map((s) => s.trim())
   .filter(Boolean);
 
-const isAllowedOrigin = (origin: string | undefined, cb: (err: Error | null, allow: boolean) => void) => {
-  try {
-    if (!origin) return cb(null, true); // non-browser clients (smoke harness, server-to-server)
-    const { hostname } = new URL(origin);
-    const allow =
-      CORS_ALLOW.includes(origin) ||
-      hostname.endsWith(".e2b.app") || // sandbox live previews (any port host)
-      hostname === "localhost" ||
-      hostname === "127.0.0.1";
-    cb(null, allow);
-  } catch {
-    cb(null, false);
-  }
-};
+const isAllowedOrigin = createOriginChecker(CORS_ALLOW);
 
 const app = express();
 app.use(express.json({ limit: "64kb" }));

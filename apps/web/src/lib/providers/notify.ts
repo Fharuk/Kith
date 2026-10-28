@@ -1,3 +1,4 @@
+import { and, eq, inArray, isNull, lte, or } from "drizzle-orm";
 import { getDb, notifications } from "@kith/database";
 
 /**
@@ -126,8 +127,79 @@ export function getNotifier(): Notifier {
 }
 
 /**
- * Record a notification in-app and fan it out to the configured vendors. Never throws.
- * `phone`/`email` are optional: without a destination channel only the in-app row is kept.
+ * NOTIFICATION OUTBOX.
+ *
+ * The row is written BEFORE the vendor is called. That single ordering decision is what makes
+ * messaging durable: a provider outage, a timeout, or a process death mid-send leaves a
+ * `pending` row with a destination and a body that the worker can retry — instead of a
+ * message that vanished with no trace. `in_app` rows are delivered by the insert itself.
+ *
+ * Retries: 5 attempts on a 1m/5m/30m/2h/8h ladder, then `failed` for ops to inspect.
+ */
+export const MAX_DELIVERY_ATTEMPTS = 5;
+const RETRY_LADDER_MS = [60_000, 300_000, 1_800_000, 7_200_000, 28_800_000];
+
+/** Pure: delay before the next attempt (clamped to the ladder's end). */
+export function retryDelayFor(attempt: number): number {
+  const i = Math.min(Math.max(attempt, 1), RETRY_LADDER_MS.length) - 1;
+  return RETRY_LADDER_MS[i]!;
+}
+
+/** Pure: give up after the ladder is exhausted. */
+export function shouldRetry(attempts: number): boolean {
+  return attempts < MAX_DELIVERY_ATTEMPTS;
+}
+
+const HTML_FOOTER = '<p style="color:#6b7280;font-size:12px">Kith · Your Verified Student Community</p>';
+
+/** Send one queued row and record the outcome. Never throws. */
+export async function deliverNotification(id: string): Promise<"sent" | "failed" | "skipped"> {
+  const db = getDb();
+  try {
+    const [row] = await db.select().from(notifications).where(eq(notifications.id, id));
+    if (!row) return "skipped";
+    if (row.channel === "in_app") return "sent";
+    if (!row.destination) {
+      await db.update(notifications).set({ deliveryStatus: "skipped", lastError: "no destination" }).where(eq(notifications.id, id));
+      return "skipped";
+    }
+
+    const notifier = getNotifier();
+    const result = row.channel === "email"
+      ? await notifier.email(row.destination, row.subject ?? "Kith — your verified student community", row.body ?? `<p>${row.type}</p>${HTML_FOOTER}`)
+      : await notifier.sms(row.destination, row.body ?? "");
+
+    const attempt = row.deliveryAttempts + 1;
+    if (result.ok) {
+      await db.update(notifications).set({
+        deliveryStatus: "sent",
+        deliveryAttempts: attempt,
+        providerMessageId: result.providerMessageId,
+        deliveredAt: new Date(),
+        lastError: null,
+        nextAttemptAt: null,
+      }).where(eq(notifications.id, id));
+      return "sent";
+    }
+
+    const retryable = shouldRetry(attempt);
+    await db.update(notifications).set({
+      deliveryStatus: retryable ? "pending" : "failed",
+      deliveryAttempts: attempt,
+      lastError: result.error ?? "provider rejected the message",
+      nextAttemptAt: retryable ? new Date(Date.now() + retryDelayFor(attempt)) : null,
+    }).where(eq(notifications.id, id));
+    return retryable ? "sent" : "failed";
+  } catch (e) {
+    // Never let messaging break a money path; the audit log remains the record.
+    console.error("[notify] failed", e instanceof Error ? e.message : e);
+    return "failed";
+  }
+}
+
+/**
+ * Record a notification in-app and queue its fan-out. Never throws; `email`/`phone` are
+ * optional, and without a destination only the in-app row exists.
  */
 export async function notifyUser(input: {
   userId: string;
@@ -138,36 +210,59 @@ export async function notifyUser(input: {
   email?: string | null;
   emailSubject?: string;
 }): Promise<void> {
-  const notifier = getNotifier();
   try {
-    const [smsResult, emailResult] = await Promise.all([
-      input.phone ? notifier.sms(input.phone, input.message) : Promise.resolve(null),
-      input.email
-        ? notifier.email(
-            input.email,
-            input.emailSubject ?? "Kith — your verified student community",
-            `<p>${input.message}</p><p style="color:#6b7280;font-size:12px">Kith · Your Verified Student Community</p>`,
-          )
-        : Promise.resolve(null),
-    ]);
+    const db = getDb();
+    const html = `<p>${input.message}</p>${HTML_FOOTER}`;
 
-    await getDb().insert(notifications).values([
-      { userId: input.userId, channel: "in_app", type: input.type, payload: input.payload },
-      ...(input.phone
-        ? [{
-            userId: input.userId, channel: "sms" as const, type: input.type,
-            payload: input.payload, providerMessageId: smsResult?.providerMessageId ?? null,
-          }]
-        : []),
-      ...(input.email
-        ? [{
-            userId: input.userId, channel: "email" as const, type: input.type,
-            payload: input.payload, providerMessageId: emailResult?.providerMessageId ?? null,
-          }]
-        : []),
-    ]);
+    const rows = [
+      {
+        userId: input.userId, channel: "in_app" as const, type: input.type,
+        payload: input.payload, body: input.message,
+        deliveryStatus: "sent", deliveredAt: new Date(),
+      },
+      ...(input.phone ? [{
+        userId: input.userId, channel: "sms" as const, type: input.type, payload: input.payload,
+        destination: input.phone, body: input.message, deliveryStatus: "pending",
+      }] : []),
+      ...(input.email ? [{
+        userId: input.userId, channel: "email" as const, type: input.type, payload: input.payload,
+        destination: input.email, body: html,
+        subject: input.emailSubject ?? "Kith — your verified student community",
+        deliveryStatus: "pending",
+      }] : []),
+    ];
+
+    const inserted = await db.insert(notifications).values(rows).returning({ id: notifications.id, channel: notifications.channel });
+
+    // Attempt immediately; anything that fails stays queued for the worker.
+    for (const row of inserted) {
+      if (row.channel !== "in_app") await deliverNotification(row.id);
+    }
   } catch (e) {
-    // Never let messaging break a money path; the caller's audit log is the record.
     console.error("[notify] failed", e instanceof Error ? e.message : e);
   }
+}
+
+/** Worker pass: retry queued SMS/email whose backoff has elapsed. */
+export async function processNotificationOutbox(limit = 50): Promise<{ attempted: number; sent: number; failed: number }> {
+  const db = getDb();
+  const now = new Date();
+  const due = await db.select({ id: notifications.id })
+    .from(notifications)
+    .where(and(
+      inArray(notifications.channel, ["email", "sms"]),
+      inArray(notifications.deliveryStatus, ["pending", "failed"]),
+      lte(notifications.deliveryAttempts, MAX_DELIVERY_ATTEMPTS - 1),
+      or(isNull(notifications.nextAttemptAt), lte(notifications.nextAttemptAt, now)),
+    ))
+    .limit(limit);
+
+  let sent = 0;
+  let failed = 0;
+  for (const row of due) {
+    const outcome = await deliverNotification(row.id);
+    if (outcome === "sent") sent++;
+    if (outcome === "failed") failed++;
+  }
+  return { attempted: due.length, sent, failed };
 }

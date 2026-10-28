@@ -64,7 +64,7 @@ export default async function LegalPage({ params }: { params: Promise<{ slug: st
   return (
     <>
       <SiteNav />
-      <main className="mx-auto max-w-3xl px-6 py-16">
+      <main id="main" className="mx-auto max-w-3xl px-6 py-16">
         <nav aria-label="Legal documents" className="flex flex-wrap gap-2 text-xs">
           {Object.entries(DOCS).map(([key, d]) => (
             <Link

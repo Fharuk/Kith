@@ -2,7 +2,7 @@ import {
   pgTable, pgEnum, text, timestamp, boolean, uuid, integer, bigint, jsonb,
   index, unique, decimal,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 
 /* ── Enums ─────────────────────────────────────────────────────────── */
 export const userRoleEnum = pgEnum("user_role", ["student", "landlord", "porter", "admin"]);
@@ -16,7 +16,7 @@ export const transactionTypeEnum = pgEnum("transaction_type", ["bid", "booking",
 export const transactionStatusEnum = pgEnum("transaction_status", ["pending", "completed", "failed", "cancelled"]);
 export const verificationStatusEnum = pgEnum("verification_status", ["pending", "approved", "rejected"]);
 export const kycStepEnum = pgEnum("kyc_step", ["nin", "matric", "biometric", "review"]);
-export const notificationChannelEnum = pgEnum("notification_channel", ["in_app", "email", "sms"]);
+export const notificationChannelEnum = pgEnum("notification_channel", ["in_app", "email", "sms", "whatsapp"]);
 export const porterTaskTypeEnum = pgEnum("porter_task_type", ["check_in", "check_out", "verify_property"]);
 export const porterTaskStatusEnum = pgEnum("porter_task_status", ["open", "assigned", "done", "failed"]);
 export const disputeStatusEnum = pgEnum("dispute_status", ["open", "under_review", "resolved", "rejected"]);
@@ -45,6 +45,14 @@ export const users = pgTable("users", {
   isVerified: boolean("is_verified").notNull().default(false),
   failedLogins: integer("failed_logins").notNull().default(0),
   lockedUntil: timestamp("locked_until", { withTimezone: true, mode: "date" }),
+  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true, mode: "date" }),
+  suspendedAt: timestamp("suspended_at", { withTimezone: true, mode: "date" }),
+  suspensionReason: text("suspension_reason"),
+  /* bump to invalidate every outstanding session for this account */
+  sessionVersion: integer("session_version").notNull().default(0),
+  phoneVerifiedAt: timestamp("phone_verified_at", { withTimezone: true, mode: "date" }),
+  /* wallet credit (referral rewards, dispute goodwill) applied at checkout */
+  creditKobo: bigint("credit_kobo", { mode: "bigint" }).notNull().default(sql`0`),
   createdAt: now("created_at"),
   updatedAt: now("updated_at"),
 }, (t) => ({
@@ -91,6 +99,15 @@ export const landlordProfiles = pgTable("landlord_profiles", {
   cacNumber: text("cac_number"),
   paystackSubaccountCode: text("paystack_subaccount_code"),
   kycStatus: verificationStatusEnum("kyc_status").notNull().default("pending"),
+  /* payout destination — verified with Paystack /bank/resolve before any transfer */
+  bankCode: text("bank_code"),
+  bankName: text("bank_name"),
+  bankAccountNumber: text("bank_account_number"),
+  bankAccountName: text("bank_account_name"),
+  paystackRecipientCode: text("paystack_recipient_code"),
+  bankVerifiedAt: timestamp("bank_verified_at", { withTimezone: true, mode: "date" }),
+  /* admin hold: stops new payouts without touching escrow state */
+  payoutHold: boolean("payout_hold").notNull().default(false),
 }, (t) => ({ userUnique: unique("landlord_profiles_user_unique").on(t.userId) }));
 
 export const porterProfiles = pgTable("porter_profiles", {
@@ -164,7 +181,7 @@ export const rooms = pgTable("rooms", {
 
 export const media = pgTable("media", {
   id: id(),
-  ownerType: text("owner_type").notNull(), // 'property' | 'room' | 'verification' | 'task'
+  ownerType: text("owner_type").notNull(), // 'property' | 'room' | 'verification' | 'inspection' | 'maintenance' | 'dispute'
   ownerId: uuid("owner_id").notNull(),
   url: text("url").notNull(),
   format: text("format").notNull().default("webp"),
@@ -172,7 +189,20 @@ export const media = pgTable("media", {
   height: integer("height"),
   alt: text("alt"),
   sort: integer("sort").notNull().default(0),
-}, (t) => ({ ownerIdx: index("media_owner_idx").on(t.ownerType, t.ownerId) }));
+  /* object storage, not a URL the client controls */
+  storageKey: text("storage_key"),
+  mimeType: text("mime_type"),
+  sizeBytes: integer("size_bytes"),
+  checksum: text("checksum"),
+  blurDataUrl: text("blur_data_url"),
+  /** public = listing photography; private = KYC docs, dispute evidence */
+  visibility: text("visibility").notNull().default("public"),
+  uploadedBy: uuid("uploaded_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: now("created_at"),
+}, (t) => ({
+  ownerIdx: index("media_owner_idx").on(t.ownerType, t.ownerId),
+  checksumIdx: index("media_checksum_idx").on(t.checksum),
+}));
 
 /* ── auctions & bids ───────────────────────────────────────────────── */
 export const auctions = pgTable("auctions", {
@@ -275,10 +305,75 @@ export const disputes = pgTable("disputes", {
   evidence: jsonb("evidence").$type<Record<string, unknown>>(),
   status: disputeStatusEnum("status").notNull().default("open"),
   resolution: text("resolution"),
+  /** outcome: release_to_landlord | refund_student | split */
+  resolutionOutcome: text("resolution_outcome"),
+  /** kobo returned to the student (0 for release) */
+  refundedKobo: bigint("refunded_kobo", { mode: "bigint" }),
+  /** kobo released to the landlord (0 for refund) */
+  releasedKobo: bigint("released_kobo", { mode: "bigint" }),
+  paystackRefundReference: text("paystack_refund_reference"),
   resolvedBy: uuid("resolved_by").references(() => users.id, { onDelete: "set null" }),
   resolvedAt: timestamp("resolved_at", { withTimezone: true, mode: "date" }),
   createdAt: now("created_at"),
-}, (t) => ({ txIdx: index("disputes_tx_idx").on(t.transactionId) }));
+}, (t) => ({
+  txIdx: index("disputes_tx_idx").on(t.transactionId),
+  statusIdx: index("disputes_status_idx").on(t.status),
+}));
+
+/* ── payouts: escrow → landlord bank account ───────────────────────── */
+export const payoutStatusEnum = pgEnum("payout_status", [
+  "queued", "processing", "paid", "failed", "cancelled",
+]);
+
+export const payouts = pgTable("payouts", {
+  id: id(),
+  /** the booking transaction whose escrow is being paid out */
+  transactionId: uuid("transaction_id").notNull().references(() => transactions.id, { onDelete: "cascade" }),
+  landlordId: uuid("landlord_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  amountKobo: kobo("amount_kobo"),
+  status: payoutStatusEnum("status").notNull().default("queued"),
+  /** Paystack transfer reference — unique per attempt, the idempotency key */
+  transferReference: text("transfer_reference"),
+  transferCode: text("transfer_code"),
+  recipientCode: text("recipient_code"),
+  attempts: integer("attempts").notNull().default(0),
+  failureReason: text("failure_reason"),
+  /** when the queued transfer may next be attempted (backoff) */
+  nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true, mode: "date" }),
+  processedAt: timestamp("processed_at", { withTimezone: true, mode: "date" }),
+  createdAt: now("created_at"),
+}, (t) => ({
+  txUnique: unique("payouts_transaction_unique").on(t.transactionId),
+  refUnique: unique("payouts_transfer_ref_unique").on(t.transferReference),
+  landlordIdx: index("payouts_landlord_idx").on(t.landlordId),
+  statusIdx: index("payouts_status_idx").on(t.status, t.nextAttemptAt),
+}));
+
+/* ── verification attempt ledger (bribe/collusion resistance) ───────── */
+export const verificationAttempts = pgTable("verification_attempts", {
+  id: id(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  step: kycStepEnum("step").notNull(),
+  succeeded: boolean("succeeded").notNull().default(false),
+  reason: text("reason"),
+  createdAt: now("created_at"),
+}, (t) => ({
+  userIdx: index("verif_attempts_user_idx").on(t.userId, t.step, t.createdAt),
+}));
+
+/* ── email verification tokens ─────────────────────────────────────── */
+export const emailVerifications = pgTable("email_verifications", {
+  id: id(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  tokenHash: text("token_hash").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+  consumedAt: timestamp("consumed_at", { withTimezone: true, mode: "date" }),
+  createdAt: now("created_at"),
+}, (t) => ({
+  tokenUnique: unique("email_verifications_token_unique").on(t.tokenHash),
+  userIdx: index("email_verifications_user_idx").on(t.userId),
+}));
 
 /* ── porter work ───────────────────────────────────────────────────── */
 export const porterTasks = pgTable("porter_tasks", {
@@ -308,7 +403,20 @@ export const notifications = pgTable("notifications", {
   providerMessageId: text("provider_message_id"),
   readAt: timestamp("read_at", { withTimezone: true, mode: "date" }),
   createdAt: now("created_at"),
-}, (t) => ({ userIdx: index("notifications_user_idx").on(t.userId, t.readAt) }));
+  /* durable outbox: the row is written BEFORE the vendor call, so a crash or a provider
+     outage leaves a retryable record instead of a silently lost message */
+  destination: text("destination"),
+  body: text("body"),
+  subject: text("subject"),
+  deliveryStatus: text("delivery_status").notNull().default("pending"),
+  deliveryAttempts: integer("delivery_attempts").notNull().default(0),
+  lastError: text("last_error"),
+  nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true, mode: "date" }),
+  deliveredAt: timestamp("delivered_at", { withTimezone: true, mode: "date" }),
+}, (t) => ({
+  userIdx: index("notifications_user_idx").on(t.userId, t.readAt),
+  outboxIdx: index("notifications_outbox_idx").on(t.deliveryStatus, t.nextAttemptAt),
+}));
 
 export const auditLogs = pgTable("audit_logs", {
   id: id(),
@@ -321,8 +429,12 @@ export const auditLogs = pgTable("audit_logs", {
   ipAddress: text("ip_address"),
   userAgent: text("user_agent"),
   createdAt: now("created_at"),
+  /* tamper-evident chain: hash = sha256(prev_hash + canonical(payload)) */
+  prevHash: text("prev_hash"),
+  hash: text("hash"),
 }, (t) => ({
   actorIdx: index("audit_actor_idx").on(t.actorId),
+  hashIdx: index("audit_hash_idx").on(t.hash),
   targetIdx: index("audit_target_idx").on(t.targetResourceType, t.targetResourceId),
 }));
 
@@ -333,6 +445,102 @@ export const idempotencyKeys = pgTable("idempotency_keys", {
   response: jsonb("response").$type<Record<string, unknown>>(),
   createdAt: now("created_at"),
 }, (t) => ({ scopeKeyUnique: unique("idempotency_scope_key_unique").on(t.scope, t.key) }));
+
+/* ── inspection reports: the trust artifact ────────────────────────── */
+export const inspectionReports = pgTable("inspection_reports", {
+  id: id(),
+  /** ?ref= slug for the public, shareable report page */
+  publicSlug: text("public_slug").notNull(),
+  propertyId: uuid("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  roomId: uuid("room_id").references(() => rooms.id, { onDelete: "set null" }),
+  taskId: uuid("task_id").references(() => porterTasks.id, { onDelete: "set null" }),
+  porterId: uuid("porter_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  /** checklist answers: { water: {ok, note}, power: {...}, ... } */
+  checklist: jsonb("checklist").$type<Record<string, { ok: boolean; note?: string }>>().notNull().default({}),
+  notes: text("notes"),
+  /** 0–100, computed from the checklist — the headline number on the public page */
+  score: integer("score").notNull().default(0),
+  photoIds: jsonb("photo_ids").$type<string[]>().notNull().default([]),
+  gpsLat: decimal("gps_lat", { precision: 10, scale: 8 }),
+  gpsLng: decimal("gps_lng", { precision: 11, scale: 8 }),
+  createdAt: now("created_at"),
+}, (t) => ({
+  slugUnique: unique("inspection_reports_slug_unique").on(t.publicSlug),
+  propertyIdx: index("inspection_reports_property_idx").on(t.propertyId),
+  porterIdx: index("inspection_reports_porter_idx").on(t.porterId),
+}));
+
+/* ── roommate matching ─────────────────────────────────────────────── */
+export const roommateProfiles = pgTable("roommate_profiles", {
+  id: id(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  universityId: uuid("university_id").references(() => universities.id, { onDelete: "set null" }),
+  /** naira bands, stored in kobo */
+  budgetMinKobo: kobo("budget_min_kobo"),
+  budgetMaxKobo: kobo("budget_max_kobo"),
+  gender: text("gender"),
+  genderPreference: text("gender_preference").notNull().default("any"),
+  sleepSchedule: text("sleep_schedule").notNull().default("flexible"),
+  cleanliness: integer("cleanliness").notNull().default(3),
+  smoker: boolean("smoker").notNull().default(false),
+  guests: text("guests").notNull().default("sometimes"),
+  course: text("course"),
+  bio: text("bio"),
+  looking: boolean("looking").notNull().default(true),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+}, (t) => ({
+  userUnique: unique("roommate_profiles_user_unique").on(t.userId),
+  lookingIdx: index("roommate_profiles_looking_idx").on(t.looking),
+}));
+
+/* ── maintenance: the post-move-in relationship ────────────────────── */
+export const maintenanceStatusEnum = pgEnum("maintenance_status", ["open", "in_progress", "resolved", "rejected"]);
+
+export const maintenanceTickets = pgTable("maintenance_tickets", {
+  id: id(),
+  bookingId: uuid("booking_id").references(() => bookings.id, { onDelete: "cascade" }),
+  propertyId: uuid("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  roomId: uuid("room_id").references(() => rooms.id, { onDelete: "set null" }),
+  raisedBy: uuid("raised_by").notNull().references(() => users.id, { onDelete: "cascade" }),
+  landlordId: uuid("landlord_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  category: text("category").notNull(),
+  description: text("description").notNull(),
+  photoIds: jsonb("photo_ids").$type<string[]>().notNull().default([]),
+  status: maintenanceStatusEnum("status").notNull().default("open"),
+  /* landlord's first human response — the SLA clock stops here */
+  acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true, mode: "date" }),
+  resolutionNote: text("resolution_note"),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true, mode: "date" }),
+  createdAt: now("created_at"),
+}, (t) => ({
+  landlordIdx: index("maintenance_landlord_idx").on(t.landlordId),
+  statusIdx: index("maintenance_status_idx").on(t.status),
+  propertyIdx: index("maintenance_property_idx").on(t.propertyId),
+}));
+
+/* ── referrals ─────────────────────────────────────────────────────── */
+export const referralCodes = pgTable("referral_codes", {
+  id: id(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  code: text("code").notNull(),
+  createdAt: now("created_at"),
+}, (t) => ({ codeUnique: unique("referral_codes_code_unique").on(t.code), userUnique: unique("referral_codes_user_unique").on(t.userId) }));
+
+export const referrals = pgTable("referrals", {
+  id: id(),
+  referrerId: uuid("referrer_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  refereeId: uuid("referee_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  code: text("code").notNull(),
+  /** pending → qualified (referee paid) → rewarded */
+  status: text("status").notNull().default("pending"),
+  rewardKobo: kobo("reward_kobo"),
+  qualifiedAt: timestamp("qualified_at", { withTimezone: true, mode: "date" }),
+  rewardedAt: timestamp("rewarded_at", { withTimezone: true, mode: "date" }),
+  createdAt: now("created_at"),
+}, (t) => ({
+  refereeUnique: unique("referrals_referee_unique").on(t.refereeId),
+  referrerIdx: index("referrals_referrer_idx").on(t.referrerId),
+}));
 
 /* ── relations ─────────────────────────────────────────────────────── */
 export const usersRelations = relations(users, ({ many, one }) => ({
