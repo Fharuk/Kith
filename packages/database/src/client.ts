@@ -57,7 +57,17 @@ export function getDb(): Db {
   const url = process.env.DATABASE_URL;
   if (url) {
     const postgres = require_("postgres");
-    return setHandle(drizzlePg(postgres(url, { max: 10 }), { schema }) as unknown as Db);
+    // Supabase's Supavisor pooler (port 6543) runs in transaction mode and cannot carry
+    // server-side prepared statements; direct connections can. Detect the pooler and turn
+    // `prepare` off there so pooled serverless requests do not collide on statement names.
+    const pooled = /pooler\.supabase\.com/.test(url) || /pgbouncer=true/.test(url);
+    const client = postgres(url, {
+      max: 10,
+      prepare: !pooled,
+      ssl: url.includes("sslmode=disable") ? false : "require",
+      onnotice: () => {},
+    });
+    return setHandle(drizzlePg(client, { schema }) as unknown as Db);
   }
   const { PGlite } = require_("@electric-sql/pglite");
   const dataDir = process.env.PGLITE_DIR ?? path.join(repoRoot(), ".cache", "pglite");
