@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { drizzle as drizzlePg } from "drizzle-orm/postgres-js";
 import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
@@ -61,6 +61,8 @@ export function getDb(): Db {
   }
   const { PGlite } = require_("@electric-sql/pglite");
   const dataDir = process.env.PGLITE_DIR ?? path.join(repoRoot(), ".cache", "pglite");
+  // PGlite creates files, not directories: a fresh checkout (or CI runner) has no .cache yet.
+  mkdirSync(dataDir, { recursive: true });
   return setHandle(drizzlePglite(new PGlite(dataDir), { schema }));
 }
 

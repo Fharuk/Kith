@@ -66,7 +66,9 @@ jobs:
       # PGlite stands in for Postgres in CI exactly as it does locally: real SQL, real
       # DDL, real constraints — no DATABASE_URL required.
       - name: Seed (idempotent — runs migrations, then demo data)
-        run: pnpm --filter @kith/database db:seed
+        run: |
+          mkdir -p .cache
+          pnpm --filter @kith/database db:seed
       - name: Re-run seed to prove idempotency
         run: pnpm --filter @kith/database db:seed
 
