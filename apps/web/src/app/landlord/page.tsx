@@ -7,6 +7,7 @@ import { SiteNav } from "@/components/site-nav";
 import { SiteFooter } from "@/components/site-footer";
 import { getPaystack } from "@/lib/paystack";
 import { PayoutAccountForm } from "./payout-account-form";
+import { ListingForm } from "./listing-form";
 
 export const metadata = { title: "Landlord console" };
 
@@ -46,6 +47,10 @@ export default async function LandlordConsole() {
           <Card label="Released to you" value={formatNgn(released)} hint="Escrow released by porter check-in or 24h" />
           <Card label="Paid to your bank" value={formatNgn(paidOut)} hint={inFlight > 0n ? `${formatNgn(inFlight)} in flight` : "Transfers settled"} />
         </div>
+
+        <section className="mt-10">
+          <ListingForm />
+        </section>
 
         <section className="mt-10 grid gap-6 lg:grid-cols-[1fr_1.1fr]">
           <PayoutAccountForm
