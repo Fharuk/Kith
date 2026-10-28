@@ -76,7 +76,7 @@ export default async function RoomPage({ params }: { params: Promise<{ id: strin
                   <div className="flex justify-between"><dt>Bids so far</dt><dd className="tabular font-semibold text-ink">{auction?.totalBids ?? 0}</dd></div>
                 </dl>
                 <Link
-                  href="/auctions/demo"
+                  href={auction ? `/auctions/${auction.id}` : "/auctions/demo"}
                   className="group mt-7 inline-flex w-full items-center justify-center gap-2 rounded-full bg-kith-blue-deep px-6 py-3.5 text-sm font-semibold text-paper transition-colors hover:bg-navy"
                 >
                   Join the live auction room

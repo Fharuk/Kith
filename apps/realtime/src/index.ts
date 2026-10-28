@@ -30,7 +30,33 @@ const isAllowedOrigin = (origin: string | undefined, cb: (err: Error | null, all
 };
 
 const app = express();
+app.use(express.json({ limit: "64kb" }));
 app.get("/healthz", (_req, res) => res.json({ ok: true, service: "kith-realtime" }));
+
+
+/**
+ * Internal fan-out relay (web → realtime).
+ *
+ * The web app owns every database write (single-writer PGlite in dev, Postgres in prod);
+ * this service is a dumb, fast broadcast plane. Guarded by a shared secret so the public
+ * internet can never inject auction events.
+ */
+const INTERNAL_SECRET = process.env.INTERNAL_SECRET ?? "kith-internal-dev";
+const PublishSchema = z.object({
+  room: z.string().min(1).max(120),
+  event: z.string().min(1).max(60),
+  payload: z.unknown(),
+});
+
+app.post("/internal/publish", (req, res) => {
+  if (req.headers["x-internal-secret"] !== INTERNAL_SECRET) {
+    return res.status(401).json({ ok: false, error: "unauthorized" });
+  }
+  const parsed = PublishSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ ok: false, error: "invalid payload" });
+  io.to(parsed.data.room).emit(parsed.data.event, parsed.data.payload);
+  res.json({ ok: true, room: parsed.data.room, listeners: io.sockets.adapter.rooms.get(parsed.data.room)?.size ?? 0 });
+});
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
@@ -94,6 +120,21 @@ io.on("connection", (socket: Socket) => {
     if (outcome.extended) {
       io.to(room).emit("auction_extended", { auctionId: parsed.data.auctionId, newEndTime: outcome.state.actualEndTime });
     }
+  });
+
+  /**
+   * Spectator subscription for DB-backed Circle auctions. Bidding for these goes through
+   * POST /api/auctions/:id/bids (server-authoritative), so the socket only carries state.
+   */
+  socket.on("watch_auction", async (raw: unknown) => {
+    const parsed = z.object({ auctionId: z.string().min(1) }).safeParse(raw);
+    if (!parsed.success) return;
+    if (joined) {
+      await socket.leave(`auction:${joined}`);
+      joined = null;
+    }
+    await socket.join(`auction:${parsed.data.auctionId}`);
+    socket.emit("watching", { auctionId: parsed.data.auctionId });
   });
 
   socket.on("leave_auction", async () => {

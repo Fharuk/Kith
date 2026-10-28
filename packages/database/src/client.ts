@@ -8,7 +8,26 @@ import * as schema from "./schema";
 export type Db = PgliteDB<typeof schema> | ReturnType<typeof drizzlePg<typeof schema>>;
 
 const require_ = createRequire(import.meta.url);
-let db: Db | undefined;
+
+/**
+ * The handle lives on globalThis, not in module scope.
+ *
+ * Next.js instantiates separate module graphs for the RSC render and for route handlers;
+ * with module-scoped state each graph would open its OWN PGlite instance on the same data
+ * directory — two in-memory Postgres engines writing one dir (silent divergence, then
+ * corruption). globalThis is per-process, so every graph shares one engine.
+ */
+const GLOBAL_KEY = Symbol.for("kith.database.handle");
+type GlobalWithDb = typeof globalThis & { [GLOBAL_KEY]?: Db };
+
+function getHandle(): Db | undefined {
+  return (globalThis as GlobalWithDb)[GLOBAL_KEY];
+}
+
+function setHandle(handle: Db): Db {
+  (globalThis as GlobalWithDb)[GLOBAL_KEY] = handle;
+  return handle;
+}
 
 /** Walk up from cwd to the monorepo root (pnpm-workspace.yaml marker). */
 export function repoRoot(): string {
@@ -28,17 +47,16 @@ export function repoRoot(): string {
  * Selection is by env, never by NODE_ENV (architecture §6).
  */
 export function getDb(): Db {
-  if (db) return db;
+  const existing = getHandle();
+  if (existing) return existing;
   const url = process.env.DATABASE_URL;
   if (url) {
     const postgres = require_("postgres");
-    db = drizzlePg(postgres(url, { max: 10 }), { schema });
-    return db;
+    return setHandle(drizzlePg(postgres(url, { max: 10 }), { schema }));
   }
   const { PGlite } = require_("@electric-sql/pglite");
   const dataDir = process.env.PGLITE_DIR ?? path.join(repoRoot(), ".cache", "pglite");
-  db = drizzlePglite(new PGlite(dataDir), { schema });
-  return db;
+  return setHandle(drizzlePglite(new PGlite(dataDir), { schema }));
 }
 
 export * from "./schema";
