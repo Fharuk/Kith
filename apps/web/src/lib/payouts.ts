@@ -28,9 +28,9 @@ const MAX_ATTEMPTS = 5;
 /** 1m, 5m, 30m, 2h, 8h */
 const BACKOFF_MS = [60_000, 300_000, 1_800_000, 7_200_000, 28_800_000];
 
-export function backoffFor(attempt: number): Date {
+export function backoffFor(attempt: number, now: number = Date.now()): Date {
   const idx = Math.min(Math.max(attempt - 1, 0), BACKOFF_MS.length - 1);
-  return new Date(Date.now() + (BACKOFF_MS[idx] ?? BACKOFF_MS[BACKOFF_MS.length - 1]!));
+  return new Date(now + (BACKOFF_MS[idx] ?? BACKOFF_MS[BACKOFF_MS.length - 1]!));
 }
 
 export interface PayoutProfile {

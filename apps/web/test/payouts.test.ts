@@ -8,22 +8,22 @@ import { backoffFor, payoutDestinationReady } from "@/lib/payouts";
  */
 
 describe("backoffFor", () => {
-  const now = Date.now();
+  const now = 1_700_000_000_000;
 
   it("backs off progressively and never retries faster than a minute", () => {
-    const gaps = [1, 2, 3, 4, 5].map((n) => backoffFor(n).getTime() - now);
+    const gaps = [1, 2, 3, 4, 5].map((n) => backoffFor(n, now).getTime() - now);
     expect(gaps[0]!).toBeGreaterThanOrEqual(59_000);
     for (let i = 1; i < gaps.length; i++) expect(gaps[i]!).toBeGreaterThan(gaps[i - 1]!);
   });
 
   it("is deterministic for the same attempt number", () => {
-    expect(backoffFor(2).getTime()).toBe(backoffFor(2).getTime());
+    expect(backoffFor(2, now).getTime()).toBe(backoffFor(2, now).getTime());
   });
 
   it("clamps attempts beyond the ladder to the longest delay", () => {
-    const last = backoffFor(5).getTime() - now;
-    expect(backoffFor(99).getTime() - now).toBe(last);
-    expect(backoffFor(0).getTime() - now).toBeGreaterThan(0);
+    const last = backoffFor(5, now).getTime() - now;
+    expect(backoffFor(99, now).getTime() - now).toBe(last);
+    expect(backoffFor(0, now).getTime() - now).toBeGreaterThan(0);
   });
 });
 
