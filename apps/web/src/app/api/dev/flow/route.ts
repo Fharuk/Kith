@@ -2,9 +2,12 @@ import { and, eq } from "drizzle-orm";
 import { getDb, media, properties, rooms } from "@kith/database";
 import { createListing } from "@/app/actions/listing-actions";
 import { verifyTaskAction } from "@/app/actions/porter-task-actions";
+import { submitNin } from "@/app/actions/auth-actions";
 import { openDisputeAction } from "@/app/actions/dispute-actions";
 import { adminResolveDispute } from "@/app/actions/admin-actions";
 import { currentUser } from "@/lib/session";
+import { issueEmailVerification, consumeEmailToken } from "@/lib/email-verification";
+import { users as usersTable, verificationAttempts as attemptsTable } from "@kith/database";
 import { getDb as dbFor, transactions as txTable } from "@kith/database";
 
 export const runtime = "nodejs";
@@ -58,6 +61,39 @@ export async function POST(req: Request) {
     fd.append("outcome", body.outcome ?? "verified");
     fd.append("notes", body.notes ?? "Dev harness verification");
     return Response.json(await verifyTaskAction(null, fd));
+  }
+
+  if (body.op === "reset-attempts") {
+    const user = await currentUser();
+    if (!user) return Response.json({ ok: false, error: "unauthenticated" }, { status: 401 });
+    const db = dbFor();
+    await db.delete(attemptsTable).where(eq(attemptsTable.userId, user.id));
+    return Response.json({ ok: true });
+  }
+
+  if (body.op === "submit-nin") {
+    const fd = new FormData();
+    fd.append("nin", body.nin ?? "");
+    fd.append("dateOfBirth", body.dateOfBirth ?? "2003-04-12");
+    return Response.json(await submitNin(fd));
+  }
+
+  if (body.op === "whoami") {
+    const user = await currentUser();
+    if (!user) return Response.json({ ok: false, error: "unauthenticated" }, { status: 401 });
+    const [row] = await dbFor().select({ email: usersTable.email, emailVerifiedAt: usersTable.emailVerifiedAt, isVerified: usersTable.isVerified }).from(usersTable).where(eq(usersTable.id, user.id));
+    return Response.json({ ok: true, user: { id: user.id, role: user.role, ...row, emailVerifiedAt: row?.emailVerifiedAt?.toISOString() ?? null } });
+  }
+
+  if (body.op === "issue-email-token") {
+    const user = await currentUser();
+    if (!user) return Response.json({ ok: false, error: "unauthenticated" }, { status: 401 });
+    const issued = await issueEmailVerification({ userId: user.id, email: user.email, reason: "resend" });
+    return Response.json(issued);
+  }
+
+  if (body.op === "consume-email-token") {
+    return Response.json(await consumeEmailToken(body.token ?? ""));
   }
 
   if (body.op === "list-tx") {

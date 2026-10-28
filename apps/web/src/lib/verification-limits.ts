@@ -53,9 +53,13 @@ export function evaluateBudget(attemptTimestamps: number[], policy: { limit: num
 export async function verificationBudget(userId: string, step: KycStep, now = Date.now()): Promise<BudgetState> {
   const db = getDb();
   const since = new Date(now - HOUR_MS);
-  const rows = await db.select({ step: verificationAttempts.step, createdAt: verificationAttempts.createdAt })
+  // One row is written when an attempt starts ("attempt") and another when it resolves
+  // ("success"/"failure"). Only the START rows count against the budget, otherwise a single
+  // failed guess would burn two of the five slots the policy promises.
+  const rows = (await db.select({ step: verificationAttempts.step, createdAt: verificationAttempts.createdAt, reason: verificationAttempts.reason })
     .from(verificationAttempts)
-    .where(and(eq(verificationAttempts.userId, userId), gte(verificationAttempts.createdAt, since)));
+    .where(and(eq(verificationAttempts.userId, userId), gte(verificationAttempts.createdAt, since))))
+    .filter((r) => r.reason === null || r.reason === "attempt");
 
   const stepState = evaluateBudget(
     rows.filter((r) => r.step === step).map((r) => r.createdAt.getTime()),
