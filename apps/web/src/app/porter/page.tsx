@@ -3,6 +3,7 @@ import { getDb, porterTasks, porterProfiles, bookings, properties, rooms } from 
 import { requireUser } from "@/lib/session";
 import { SiteNav } from "@/components/site-nav";
 import { SiteFooter } from "@/components/site-footer";
+import { Numpad } from "@/components/porter/numpad";
 import { IconKey, IconHomeCheck } from "@/components/icons";
 
 export const metadata = { title: "Porter terminal" };
@@ -25,15 +26,8 @@ export default async function PorterTerminal() {
           check-in releases escrow to the landlord.
         </p>
 
-        <div className="mt-10 rounded-card bg-navy p-10 text-paper shadow-lift">
-          <p className="inline-flex items-center gap-2 text-sm font-semibold text-kith-green">
-            <IconKey width={18} height={18} /> Check-in numpad
-          </p>
-          <p className="tabular mt-4 font-mono text-2xl tracking-[0.2em] text-paper/80">— — — — — —</p>
-          <p className="mt-4 text-xs leading-relaxed text-paper/60">
-            The live numpad ships with the check-in slice (next build). Codes rotate every 5 minutes with a
-            ±1 window grace for clock skew; wrong codes log a denied attempt against the booking.
-          </p>
+        <div className="mt-10">
+          <Numpad />
         </div>
 
         <section className="mt-12">
