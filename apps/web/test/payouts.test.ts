@@ -12,8 +12,8 @@ describe("backoffFor", () => {
 
   it("backs off progressively and never retries faster than a minute", () => {
     const gaps = [1, 2, 3, 4, 5].map((n) => backoffFor(n).getTime() - now);
-    expect(gaps[0]).toBeGreaterThanOrEqual(59_000);
-    for (let i = 1; i < gaps.length; i++) expect(gaps[i]).toBeGreaterThan(gaps[i - 1]);
+    expect(gaps[0]!).toBeGreaterThanOrEqual(59_000);
+    for (let i = 1; i < gaps.length; i++) expect(gaps[i]!).toBeGreaterThan(gaps[i - 1]!);
   });
 
   it("is deterministic for the same attempt number", () => {
