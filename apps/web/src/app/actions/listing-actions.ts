@@ -10,6 +10,7 @@ import { TIERS, priceWithinBand, normalizeAmenities, type RoomTier } from "@kith
 import { requireUser } from "@/lib/session";
 import { emailGateFailure } from "@/lib/email-verification";
 import { notifyUser } from "@/lib/providers/notify";
+import { autoAssignTask } from "@/lib/porter-tasks";
 
 /**
  * LANDLORD LISTING CREATION.
@@ -118,12 +119,14 @@ export async function createListing(_prev: unknown, formData: FormData): Promise
   }
 
   // Nothing is "verified" on a landlord's word: a porter visit is queued at creation.
-  await db.insert(porterTasks).values({
+  const [visit] = await db.insert(porterTasks).values({
     type: "verify_property",
     propertyId: property.id,
     status: "open",
     notes: `New listing: ${input.title.trim()}`,
-  });
+  }).returning();
+  // Put the visit on a named porter immediately — an unowned task is a task nobody does.
+  if (visit) await autoAssignTask(visit.id, user.id);
 
   await db.insert(auditLogs).values({
     actorId: user.id,

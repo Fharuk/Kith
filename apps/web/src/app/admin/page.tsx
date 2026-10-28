@@ -6,6 +6,8 @@ import { SiteNav } from "@/components/site-nav";
 import { SiteFooter } from "@/components/site-footer";
 import { AdminDisputeCard } from "@/components/admin-dispute-card";
 import { openDisputes } from "@/lib/disputes";
+import { openTaskQueue } from "@/lib/porter-tasks";
+import { AdminTaskRow } from "@/components/admin-task-row";
 
 export const metadata = { title: "Admin" };
 
@@ -25,6 +27,7 @@ export default async function AdminPage() {
   const gmv = txs.reduce((a, t) => a + (t.amountKobo ?? 0n), 0n);
   const fees = txs.reduce((a, t) => a + (t.platformFeeKobo ?? 0n), 0n);
   const disputeQueue = await openDisputes();
+  const taskQueue = await openTaskQueue();
   const unverifiedStudents = students.filter((s) => !(s.nimcVerified && s.matricVerified && s.biometricVerified)).length;
   void pendingVerifications;
 
@@ -70,6 +73,32 @@ export default async function AdminPage() {
                 </li>
               ))}
             </ul>
+          </div>
+        </section>
+
+        <section className="mt-12">
+          <div className="flex items-center justify-between">
+            <h2 className="font-sans text-sm font-semibold uppercase tracking-[0.14em] text-ink/55">Porter work queue</h2>
+            <span className="text-xs text-ink/50">{taskQueue.tasks.length} open · {taskQueue.porters.length} porters</span>
+          </div>
+          <div className="mt-4 space-y-2">
+            {taskQueue.tasks.length === 0 && (
+              <p className="rounded-card bg-sand/60 p-6 text-sm text-ink/60 hairline">No open tasks. New listings queue a property visit automatically.</p>
+            )}
+            {taskQueue.tasks.map((t) => {
+              const property = taskQueue.props.find((p) => p.id === t.propertyId);
+              const porter = taskQueue.porters.find((p) => p.id === t.porterId);
+              return (
+                <AdminTaskRow
+                  key={t.id}
+                  taskId={t.id}
+                  label={`${t.type.replace("_", " ")}${property ? ` · ${property.title}` : ""}`}
+                  detail={`${property ? `${property.address}, ${property.city}` : "No property"} · ${t.status}${porter ? ` · ${porter.firstName} ${porter.lastName}` : ""}`}
+                  porters={taskQueue.porters.map((p) => ({ id: p.id, name: `${p.firstName} ${p.lastName}` }))}
+                  currentPorterId={t.porterId}
+                />
+              );
+            })}
           </div>
         </section>
 
