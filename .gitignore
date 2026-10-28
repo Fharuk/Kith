@@ -1,0 +1,19 @@
+# deps / build
+node_modules/
+.next/
+dist/
+build/
+coverage/
+.turbo/
+*.tsbuildinfo
+# env
+.env
+.env.local
+.env.*.local
+# agent session cache (skills clones, prototype sources, drive originals)
+.cache/
+# misc
+.DS_Store
+*.log
+playwright-report/
+test-results/
