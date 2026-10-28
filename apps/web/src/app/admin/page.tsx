@@ -4,6 +4,8 @@ import { formatNgn } from "@kith/domain";
 import { requireUser } from "@/lib/session";
 import { SiteNav } from "@/components/site-nav";
 import { SiteFooter } from "@/components/site-footer";
+import { AdminDisputeCard } from "@/components/admin-dispute-card";
+import { openDisputes } from "@/lib/disputes";
 
 export const metadata = { title: "Admin" };
 
@@ -22,6 +24,7 @@ export default async function AdminPage() {
   const byRole = (r: string) => allUsers.filter((u) => u.role === r).length;
   const gmv = txs.reduce((a, t) => a + (t.amountKobo ?? 0n), 0n);
   const fees = txs.reduce((a, t) => a + (t.platformFeeKobo ?? 0n), 0n);
+  const disputeQueue = await openDisputes();
   const unverifiedStudents = students.filter((s) => !(s.nimcVerified && s.matricVerified && s.biometricVerified)).length;
   void pendingVerifications;
 
@@ -68,6 +71,31 @@ export default async function AdminPage() {
               ))}
             </ul>
           </div>
+        </section>
+
+        <section className="mt-12">
+          <div className="flex items-center justify-between">
+            <h2 className="font-sans text-sm font-semibold uppercase tracking-[0.14em] text-ink/55">Open disputes</h2>
+            <span className="text-xs text-ink/50">{disputeQueue.length} awaiting settlement</span>
+          </div>
+          {disputeQueue.length === 0 ? (
+            <p className="mt-4 rounded-card bg-sand/60 p-6 text-sm text-ink/60 hairline">
+              No open cases. Disputed payments are frozen here until you settle them.
+            </p>
+          ) : (
+            <div className="mt-4 space-y-3">
+              {disputeQueue.map(({ dispute, transaction }) => (
+                <AdminDisputeCard
+                  key={dispute.id}
+                  disputeId={dispute.id}
+                  reason={dispute.reason}
+                  amountLabel={formatNgn(transaction?.amountKobo ?? 0n)}
+                  landlordNetLabel={formatNgn(transaction?.landlordNetKobo ?? 0n)}
+                  openedLabel={new Date(dispute.createdAt).toLocaleDateString("en-NG", { day: "numeric", month: "short" })}
+                />
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="mt-12">
