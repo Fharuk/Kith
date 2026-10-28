@@ -67,11 +67,20 @@ export async function registerAction(_prev: unknown, formData: FormData) {
 export async function loginAction(_prev: unknown, formData: FormData) {
   const email = String(formData.get("email") ?? "").toLowerCase();
   const password = String(formData.get("password") ?? "");
+  const code = String(formData.get("code") ?? "").trim();
   const callbackUrl = String(formData.get("callbackUrl") ?? "") || undefined;
+
+  // Ask for the second factor before attempting sign-in so the password stays in the form.
+  // The real check still happens inside `authorize` — this only decides what UI to show.
+  if (!code) {
+    const [existing] = await getDb().select({ twoFactorEnabled: users.twoFactorEnabled }).from(users).where(eq(users.email, email));
+    if (existing?.twoFactorEnabled) return { requires2fa: true };
+  }
+
   try {
-    await signIn("credentials", { email, password, redirectTo: callbackUrl });
+    await signIn("credentials", { email, password, ...(code ? { code } : {}), redirectTo: callbackUrl });
   } catch (e) {
-    if (e instanceof AuthError) return { error: "Invalid email or password" };
+    if (e instanceof AuthError) return { error: "Invalid email or password", requires2fa: Boolean(code) };
     throw e;
   }
 }

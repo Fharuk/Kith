@@ -11,6 +11,7 @@ declare module "next-auth" {
       role: "student" | "landlord" | "porter" | "admin";
       pseudonymizedId: string;
       isVerified: boolean;
+      sessionVersion: number;
     } & DefaultSession["user"];
   }
 
@@ -18,6 +19,7 @@ declare module "next-auth" {
     role: "student" | "landlord" | "porter" | "admin";
     pseudonymizedId: string;
     isVerified: boolean;
+    sessionVersion: number;
   }
 }
 
@@ -27,5 +29,6 @@ declare module "next-auth/jwt" {
     role: "student" | "landlord" | "porter" | "admin";
     pseudonymizedId: string;
     isVerified: boolean;
+    sessionVersion: number;
   }
 }
