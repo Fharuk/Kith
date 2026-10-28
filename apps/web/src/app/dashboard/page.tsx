@@ -10,6 +10,8 @@ import { DisputeForm } from "@/components/dispute-form";
 import { needsEmailConfirmation } from "@/lib/email-verification";
 import { ResendEmailButton } from "@/app/verify-email/verify-email-form";
 import { PayNowButton } from "./pay-now-button";
+import { MaintenanceForm } from "@/components/maintenance-form";
+import { studentTickets } from "@/lib/maintenance";
 
 export const metadata = { title: "Student dashboard" };
 
@@ -27,6 +29,8 @@ export default async function StudentDashboard() {
   const [me] = await db.select({ emailVerifiedAt: users.emailVerifiedAt, isVerified: users.isVerified }).from(users).where(eq(users.id, user.id));
   const emailPending = needsEmailConfirmation(me ?? {});
   const myTransactions = await db.select().from(transactions).where(eq(transactions.studentId, user.id));
+  const activeStay = myBookings.find((b) => ["confirmed", "checked_in"].includes(b.booking.status));
+  const myTickets = await studentTickets(user.id);
 
   const gates = (profile?.nimcVerified ? 1 : 0) + (profile?.matricVerified ? 1 : 0) + (profile?.biometricVerified ? 1 : 0);
 
@@ -128,6 +132,27 @@ export default async function StudentDashboard() {
             </p>
           </div>
         )}
+        {activeStay && (
+          <section className="mt-12 grid gap-6 lg:grid-cols-[1fr,0.8fr]">
+            <MaintenanceForm bookingId={activeStay.booking.id} propertyTitle={activeStay.property.title} />
+            <div className="rounded-card bg-sand/50 p-5 hairline">
+              <h2 className="font-sans text-sm font-semibold uppercase tracking-[0.14em] text-ink/55">Your reports</h2>
+              {myTickets.length === 0 ? (
+                <p className="mt-3 text-sm text-ink/60">Nothing open. If something breaks, report it here and your landlord gets an SLA clock.</p>
+              ) : (
+                <ul className="mt-3 space-y-2">
+                  {myTickets.map(({ ticket }) => (
+                    <li key={ticket.id} className="rounded-field bg-paper px-4 py-3 text-sm">
+                      <p className="font-medium text-navy">{ticket.category} · {ticket.status.replace("_", " ")}</p>
+                      <p className="text-xs text-ink/55">{ticket.description.slice(0, 90)}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
+        )}
+
       </main>
       <SiteFooter />
     </>

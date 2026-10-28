@@ -8,6 +8,9 @@ import { SiteFooter } from "@/components/site-footer";
 import { getPaystack } from "@/lib/paystack";
 import { PayoutAccountForm } from "./payout-account-form";
 import { ListingForm } from "./listing-form";
+import { MaintenanceTicketRow, type TicketView } from "@/components/maintenance-ticket-row";
+import { landlordTickets } from "@/lib/maintenance";
+import { isOverdue, type MaintenanceCategory } from "@/lib/maintenance-config";
 
 export const metadata = { title: "Landlord console" };
 
@@ -34,6 +37,21 @@ export default async function LandlordConsole() {
   } catch {
     banks = [];
   }
+
+  const tickets = await landlordTickets(user.id);
+  const ticketViews: TicketView[] = tickets.map(({ ticket, property }) => ({
+    id: ticket.id,
+    category: ticket.category,
+    description: ticket.description,
+    status: ticket.status,
+    createdAt: ticket.createdAt.toISOString(),
+    acknowledgedAt: ticket.acknowledgedAt ? ticket.acknowledgedAt.toISOString() : null,
+    resolutionNote: ticket.resolutionNote,
+    propertyTitle: property.title,
+    overdue: isOverdue({ status: ticket.status, acknowledgedAt: ticket.acknowledgedAt, createdAt: ticket.createdAt }, ticket.category as MaintenanceCategory),
+    photoCount: ticket.photoIds.length,
+  }));
+  const openTickets = ticketViews.filter((t) => t.status !== "resolved");
 
   return (
     <>
@@ -110,6 +128,26 @@ export default async function LandlordConsole() {
               </li>
             ))}
           </ul>
+        </section>
+
+        <section className="mt-12">
+          <div className="flex items-center justify-between">
+            <h2 className="font-sans text-sm font-semibold uppercase tracking-[0.14em] text-ink/55">Maintenance ({openTickets.length} open)</h2>
+            {ticketViews.some((t) => t.overdue) && (
+              <span className="rounded-full bg-danger/10 px-3 py-1 text-[11px] font-semibold text-danger">
+                {ticketViews.filter((t) => t.overdue).length} past SLA
+              </span>
+            )}
+          </div>
+          {ticketViews.length === 0 ? (
+            <p className="mt-4 rounded-card bg-sand/50 p-5 text-sm text-ink/60 hairline">
+              No maintenance tickets. Tenants can report a problem from their dashboard.
+            </p>
+          ) : (
+            <ul className="mt-4 space-y-3">
+              {ticketViews.map((t) => <MaintenanceTicketRow key={t.id} ticket={t} />)}
+            </ul>
+          )}
         </section>
 
         <section className="mt-12">
