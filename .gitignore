@@ -17,3 +17,6 @@ coverage/
 *.log
 playwright-report/
 test-results/
+
+# local upload storage (object storage in production)
+.uploads/
