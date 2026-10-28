@@ -73,6 +73,30 @@ to a real server with no code changes.
     porter terminal, admin console) plus legal pages, sitemap/robots, structured data and a
     keyboard-accessible shell.
 
+## Product surface
+
+| Surface | What it does |
+|---|---|
+| Landing / Find a room | Tiered search (Circle · Market · Elite), fair-price bands from live listings |
+| Room page | Photo gallery, Proof of Room report link, auction or fixed price, Paystack checkout |
+| Student dashboard | Bids, booking, guest pass, maintenance reports, referrals, roommate preferences |
+| Proof of Room (`/reports/[slug]`) | Public, shareable inspection report: 10-item weighted checklist, score, photos, GPS, porter name |
+| Roommates (`/roommates`) | Explainable compatibility matching (budget, sleep, tidiness, guests) among verified students |
+| Landlord console | Listing creation, payout account, escrow revenue, maintenance tickets with SLAs |
+| Porter terminal | Gate code validation, checklist inspection with photos and location |
+| Admin | Verification queue, disputes, refunds, payouts, porter task assignment, audit log |
+| Account (`/account/security`) | 2FA enrolment, sign out everywhere |
+
+## Security posture
+
+- Argon2id passwords, 5-attempt lockout, encrypted TOTP seeds (AES-256-GCM), step-up auth on money actions
+- Session revocation (`session_version` in the JWT) checked in middleware; suspended accounts cut off immediately
+- CSP, HSTS, frame-ancestors none, referrer/permissions policy, no `X-Powered-By`
+- Uploads: magic-number sniffing (no client MIME trust), re-encode strips EXIF/GPS, 8MB cap, private evidence gated
+- Rate limiting per IP/user with an `UNTHROTTLED` carve-out only for signature-authenticated webhooks and cron
+- Paystack webhooks verified by HMAC; settlement, escrow release, payouts and notification retries run under a Postgres advisory lock
+- Dependabot, CodeQL (security-and-quality), gitleaks and `pnpm audit --audit-level high` in CI; zero known advisories
+
 ## Mocked vs live (env-only switches)
 
 | Capability | Default | Switch |
