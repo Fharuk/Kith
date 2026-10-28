@@ -17,7 +17,7 @@ export default async function VerifyEmailPage({ searchParams }: { searchParams: 
   return (
     <>
       <SiteNav />
-      <main className="mx-auto flex max-w-xl flex-col justify-center px-6 py-24">
+      <main id="main" className="mx-auto flex max-w-xl flex-col justify-center px-6 py-24">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-clay">One last step</p>
         <h1 className="mt-2 font-display text-4xl text-navy">
           {token ? "Confirm it's you." : "Check your inbox."}

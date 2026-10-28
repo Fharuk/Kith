@@ -10,7 +10,25 @@ import { SiteFooter } from "@/components/site-footer";
 import { IconHomeCheck, IconLock, IconGavel, IconArrowRight } from "@/components/icons";
 import { ReserveForm } from "./reserve-form";
 
-export const metadata: Metadata = { title: "Room" };
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params;
+  const db = getDb();
+  const room = (await db.select().from(rooms).where(eq(rooms.id, id)))[0];
+  if (!room) return { title: "Room not found" };
+  const property = (await db.select().from(properties).where(eq(properties.id, room.propertyId)))[0];
+  const price = room.priceKobo ?? room.floorPriceKobo ?? 0n;
+  const title = `${property?.title ?? "Room"} · ${room.roomNumber}`;
+  const description = property
+    ? `${room.roomType} in ${property.city} from ${formatNgn(price)} per session. Porter-verified, escrow-protected, with a NIMC-verified student community.`
+    : "Porter-verified student room on Kith.";
+  const photos = await db.select().from(media).where(and(eq(media.ownerType, "property"), eq(media.ownerId, room.propertyId)));
+  return {
+    title,
+    description,
+    alternates: { canonical: `/rooms/${id}` },
+    openGraph: { title, description, type: "website", images: photos[0] ? [{ url: photos[0].url }] : undefined },
+  };
+}
 
 export default async function RoomPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -29,7 +47,27 @@ export default async function RoomPage({ params }: { params: Promise<{ id: strin
   return (
     <>
       <SiteNav />
-      <main className="mx-auto max-w-6xl px-6 py-16">
+      <main id="main" className="mx-auto max-w-6xl px-6 py-16">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "Product",
+              name: `${property.title} · ${room.roomNumber}`,
+              description: property.description,
+              brand: { "@type": "Brand", name: "Kith" },
+              image: propertyPhotosAll.slice(0, 3).map((p) => `https://kith.ng${p.url}`),
+              offers: {
+                "@type": "Offer",
+                price: Number((room.priceKobo ?? room.floorPriceKobo ?? 0n) / 100n),
+                priceCurrency: "NGN",
+                availability: room.isAvailable ? "https://schema.org/InStock" : "https://schema.org/SoldOut",
+                url: `https://kith.ng/rooms/${room.id}`,
+              },
+            }),
+          }}
+        />
         <nav aria-label="Breadcrumb" className="text-sm text-ink/55">
           <Link href="/rooms" className="hover:text-navy">Rooms</Link>
           <span className="mx-2">/</span>

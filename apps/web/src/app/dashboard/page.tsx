@@ -33,7 +33,7 @@ export default async function StudentDashboard() {
   return (
     <>
       <SiteNav />
-      <main className="mx-auto max-w-6xl px-6 py-16">
+      <main id="main" className="mx-auto max-w-6xl px-6 py-16">
         {emailPending && (
           <div className="mb-8 rounded-card bg-clay/10 px-6 py-5 hairline">
             <p className="text-sm font-semibold text-ink">Confirm your email to unlock bidding and booking.</p>

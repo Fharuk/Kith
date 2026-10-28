@@ -28,7 +28,7 @@ export default async function MockCheckoutPage({ searchParams }: { searchParams:
   const property = room ? (await db.select().from(properties).where(eq(properties.id, room.propertyId)))[0] : undefined;
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-sand/70 px-4 py-16">
+    <main id="main" className="flex min-h-screen items-center justify-center bg-sand/70 px-4 py-16">
       <div className="w-full max-w-md">
         <div className="mb-6 text-center">
           <Link href="/" className="font-display text-2xl font-semibold tracking-tight text-navy">Kith</Link>

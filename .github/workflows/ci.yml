@@ -69,3 +69,44 @@ jobs:
         run: pnpm --filter @kith/database db:seed
       - name: Re-run seed to prove idempotency
         run: pnpm --filter @kith/database db:seed
+
+  smoke:
+    name: Boot both services and pass HTTP smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9.15.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+
+      - name: Local env
+        run: |
+          {
+            echo "AUTH_SECRET=ci-secret-not-used-in-production"
+            echo "AUTH_URL=http://localhost:3000"
+            echo "NEXT_PUBLIC_APP_URL=http://localhost:3000"
+            echo "NEXT_PUBLIC_SOCKET_URL=http://localhost:3001"
+          } > apps/web/.env.local
+
+      - name: Migrate + seed (embedded PGlite)
+        run: |
+          mkdir -p .cache
+          pnpm --filter @kith/database db:seed
+
+      - name: Boot realtime + web
+        run: |
+          pnpm --filter @kith/realtime dev > /tmp/realtime.log 2>&1 &
+          pnpm --filter @kith/web dev > /tmp/web.log 2>&1 &
+          for i in $(seq 1 120); do
+            if curl -fsS http://localhost:3000/login > /dev/null && curl -fsS http://localhost:3001/healthz > /dev/null; then
+              echo "both services up after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "services did not come up"; tail -40 /tmp/web.log /tmp/realtime.log; exit 1
+
+      - name: Smoke — public surfaces + authenticated consoles
+        run: SMOKE_EMAIL=student@demo.kith.ng SMOKE_PASSWORD=demo1234 node scripts/smoke.mjs --auth

@@ -34,7 +34,7 @@ export default async function AdminPage() {
   return (
     <>
       <SiteNav />
-      <main className="mx-auto max-w-6xl px-6 py-16">
+      <main id="main" className="mx-auto max-w-6xl px-6 py-16">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-clay">Signed in as {user.email}</p>
         <h1 className="mt-2 text-4xl">Platform overview.</h1>
 

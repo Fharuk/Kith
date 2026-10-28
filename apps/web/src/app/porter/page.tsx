@@ -23,7 +23,7 @@ export default async function PorterTerminal() {
   return (
     <>
       <SiteNav />
-      <main className="mx-auto max-w-4xl px-6 py-16">
+      <main id="main" className="mx-auto max-w-4xl px-6 py-16">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-clay">Zone: {profile?.zone ?? "Unassigned"}</p>
         <h1 className="mt-2 text-4xl">Terminal.</h1>
         <p className="mt-3 max-w-xl text-base text-ink/70">

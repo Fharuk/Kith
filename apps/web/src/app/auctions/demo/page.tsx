@@ -13,7 +13,7 @@ export default function DemoAuctionPage() {
   return (
     <>
       <SiteNav />
-      <main className="mx-auto max-w-6xl px-6 py-16">
+      <main id="main" className="mx-auto max-w-6xl px-6 py-16">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-clay">Circle · live demo</p>
         <h1 className="mt-3 max-w-2xl text-4xl sm:text-5xl">One room. Twelve minutes. Highest verified bid.</h1>
         <p className="mt-4 max-w-2xl text-base leading-relaxed text-ink/70">

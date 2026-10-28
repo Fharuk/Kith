@@ -44,7 +44,7 @@ export default async function CheckoutReturnPage({
   const paid = tx?.status === "completed";
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-sand/70 px-4 py-16">
+    <main id="main" className="flex min-h-screen items-center justify-center bg-sand/70 px-4 py-16">
       <div className="w-full max-w-md rounded-card bg-paper p-8 text-center shadow-lift hairline">
         <Link href="/" className="font-display text-2xl font-semibold tracking-tight text-navy">Kith</Link>
         {!tx ? (

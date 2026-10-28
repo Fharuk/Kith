@@ -112,7 +112,7 @@ export default async function RoomsPage({ searchParams }: { searchParams: Promis
   return (
     <>
       <SiteNav />
-      <main className="mx-auto max-w-6xl px-6 py-16">
+      <main id="main" className="mx-auto max-w-6xl px-6 py-16">
         <div className="flex flex-wrap items-end justify-between gap-6">
           <div>
             <h1 className="text-4xl sm:text-5xl">Find a room.</h1>

@@ -53,8 +53,25 @@ to a real server with no code changes.
    Escrow auto-release runs on the same worker pass (24h window).
 4. **Verification.** NIN (NIMC name + DOB match, NIN stored only as a salted hash) → matric
    pattern + institutional email domain → biometric liveness.
-5. **All six surfaces.** Landing, search/rooms, student dashboard + auctions, landlord
-   console, porter terminal, admin console, plus legal pages.
+5. **Money leaves as well as arrives.** Escrow release queues a payout for the landlord's
+   **bank-verified** account (the name comes back from the bank, never typed by the
+   landlord); the worker pushes transfers on a retry ladder, `transfer.*` webhooks settle
+   failures and reversals, and ops can retry, cancel or hold an account. Verified end to end:
+   check-in → ₦76,500 released → queued → transferred → `paid`.
+6. **Disputes.** A student or landlord can flag a payment; escrow freezes and any queued
+   payout is cancelled. Ops settle by refund / release / split — money moves once, both
+   parties are emailed the finding, and everything is audited.
+7. **Identity abuse controls.** Signup emails a single-use 24h confirmation link (hashed,
+   POST-consumed so link scanners cannot burn it) and the KYC gates are budgeted per user:
+   5/hr NIN, 5/hr matric, 3/hr biometric, 12/hr overall.
+8. **Listings by landlords.** Tier decides sale mode, the tier band bounds the price, Circle
+   opens a live 12-minute auction, and every property starts unverified with a porter visit
+   auto-assigned to the porter with the lightest load. Only that porter can verify it.
+9. **Search that joins up.** Text, city, price range (auction rooms compare their floor),
+   tier, sale mode, porter-verified, amenities, sorting, pagination and honest facet counts.
+10. **All six surfaces** (landing, search, student dashboard + auctions, landlord console,
+    porter terminal, admin console) plus legal pages, sitemap/robots, structured data and a
+    keyboard-accessible shell.
 
 ## Mocked vs live (env-only switches)
 
@@ -110,8 +127,22 @@ Brand is locked to the logo: navy `#1E2D5E`, Kith green `#4CAF50`, Kith blue `#2
 Gradients are limited to the single hero brand-mesh and low-alpha brand light; the nav and
 guest pass are liquid-glass surfaces.
 
+## Operations & deployment
+
+`docs/DEPLOYMENT.md` covers the Vercel + Supabase + realtime topology, the full env matrix,
+the go-live checklist (Paystack webhooks, NIMC aggregator, Termii/Resend), the ops runbook
+for stuck payouts and disputes, and an honest list of limitations.
+
+`vercel.json` schedules the money worker every minute; `pnpm smoke` (optionally `--auth`)
+is the CI-safe HTTP pass over every public surface and both consoles.
+
 ## Not built yet
 
-Deployment configuration (explicitly out of scope for now), landlord listing creation UI,
-dispute-resolution screens, and the production Redis/BullMQ swap for the in-process
-scheduler. See `docs/ARCHITECTURE.md` for the full decision record.
+- **Production Redis** — rate limiting is per-process memory today; `MemoryLimitStore` is a
+  one-file swap for Upstash when running multi-instance.
+- **Live vendor credentials** — Paystack, NIMC, Termii and Resend are mock-complete and
+  env-swappable but have not been exercised against live accounts (no keys available here).
+- **Browser visual QA** — Playwright's browser download is blocked in this environment; the
+  HTML output was inspected directly and `scripts/smoke.mjs` covers regressions.
+
+See `docs/ARCHITECTURE.md` for the decision record and `docs/DEPLOYMENT.md` for the runbook.

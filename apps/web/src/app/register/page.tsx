@@ -9,7 +9,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
   return (
     <>
       <SiteNav />
-      <main className="mx-auto max-w-2xl px-6 py-20">
+      <main id="main" className="mx-auto max-w-2xl px-6 py-20">
         <h1 className="text-4xl sm:text-5xl">Join Kith.</h1>
         <p className="mt-4 text-base leading-relaxed text-ink/70">
           One account per person, tied to a real identity. Students complete four verification
