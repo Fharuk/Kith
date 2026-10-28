@@ -9,6 +9,7 @@ import { SiteNav } from "@/components/site-nav";
 import { SiteFooter } from "@/components/site-footer";
 import { IconHomeCheck, IconLock, IconGavel, IconArrowRight } from "@/components/icons";
 import { ReserveForm } from "./reserve-form";
+import { priceBand, priceVerdict, verdictCopy } from "@/lib/fair-price";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
@@ -43,6 +44,16 @@ export default async function RoomPage({ params }: { params: Promise<{ id: strin
   const propertyPhotosAll = [...roomPhotos, ...propertyPhotos.filter((p) => !roomPhotos.some((r) => r.url === p.url))];
   const auction = (await db.select().from(auctions).where(and(eq(auctions.roomId, room.id), eq(auctions.status, "active"))))[0]!;
   const landlord = (await db.select().from(landlordProfiles).where(eq(landlordProfiles.userId, property.landlordId)))[0]!;
+  // Fair-price band: what comparable live listings ask for, same tier and city.
+  const comparables = await db
+    .select({ priceKobo: rooms.priceKobo })
+    .from(rooms)
+    .innerJoin(properties, eq(rooms.propertyId, properties.id))
+    .where(and(eq(properties.city, property.city), eq(rooms.tier, room.tier), eq(rooms.saleMode, "fixed")));
+  const band = priceBand(comparables.map((c) => c.priceKobo).filter((p): p is bigint => p !== null));
+  const verdict = priceVerdict(room.priceKobo ?? 0n, band);
+  const copy = verdictCopy(verdict, band);
+
   // The newest on-site report for this property, if a porter has filed one.
   const [latestReport] = await db
     .select({ slug: inspectionReports.publicSlug, score: inspectionReports.score, at: inspectionReports.createdAt })
@@ -75,6 +86,19 @@ export default async function RoomPage({ params }: { params: Promise<{ id: strin
             }),
           }}
         />
+
+        <section className="mt-6 rounded-card bg-paper p-5 shadow-card hairline">
+          <h2 className="font-sans text-sm font-semibold uppercase tracking-[0.14em] text-ink/55">Fair-price check</h2>
+          <p className="mt-2 text-lg font-semibold text-navy">{copy.headline}</p>
+          <p className="mt-1 text-sm text-ink/65">{copy.detail}</p>
+          {band && (
+            <p className="mt-3 text-xs text-ink/55">
+              Based on {band.samples} live {room.tier} listings in {property.city}: typical band{" "}
+              <span className="font-semibold text-ink">{formatNgn(band.p25Kobo)} – {formatNgn(band.p75Kobo)}</span>{" "}
+              (median {formatNgn(band.medianKobo)}). Advertised prices only — not a valuation.
+            </p>
+          )}
+        </section>
 
         {latestReport && (
           <Link
