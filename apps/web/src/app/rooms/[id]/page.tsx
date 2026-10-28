@@ -18,8 +18,11 @@ export default async function RoomPage({ params }: { params: Promise<{ id: strin
   const room = (await db.select().from(rooms).where(eq(rooms.id, id)))[0]!;
   if (!room) notFound();
   const property = (await db.select().from(properties).where(eq(properties.id, room.propertyId)))[0]!;
-  const photos = await db.select().from(media).where(and(eq(media.ownerType, "room"), eq(media.ownerId, room.id)));
-  const propertyPhotos = photos.length ? photos : await db.select().from(media).where(and(eq(media.ownerType, "property"), eq(media.ownerId, property.id)));
+  const roomPhotos = await db.select().from(media).where(and(eq(media.ownerType, "room"), eq(media.ownerId, room.id)));
+  const propertyPhotos = await db.select().from(media).where(and(eq(media.ownerType, "property"), eq(media.ownerId, property.id)));
+  // Room-specific shots first, then the property gallery (deduplicated by URL) — a single
+  // hero image is a listing nobody trusts.
+  const propertyPhotosAll = [...roomPhotos, ...propertyPhotos.filter((p) => !roomPhotos.some((r) => r.url === p.url))];
   const auction = (await db.select().from(auctions).where(and(eq(auctions.roomId, room.id), eq(auctions.status, "active"))))[0]!;
   const landlord = (await db.select().from(landlordProfiles).where(eq(landlordProfiles.userId, property.landlordId)))[0]!;
 
@@ -36,10 +39,19 @@ export default async function RoomPage({ params }: { params: Promise<{ id: strin
         <div className="mt-6 grid gap-12 lg:grid-cols-[1.15fr_0.85fr]">
           <div>
             <div className="relative aspect-[4/3] overflow-hidden rounded-card bg-sand">
-              {propertyPhotos[0]! && (
-                <Image src={propertyPhotos[0]!.url} alt={propertyPhotos[0]!.alt ?? property.title} width={1200} height={900} priority className="h-full w-full object-cover" />
+              {propertyPhotosAll[0]! && (
+                <Image src={propertyPhotosAll[0]!.url} alt={propertyPhotosAll[0]!.alt ?? property.title} width={1200} height={900} priority className="h-full w-full object-cover" />
               )}
             </div>
+            {propertyPhotosAll.length > 1 && (
+              <div className="mt-3 grid grid-cols-3 gap-3">
+                {propertyPhotosAll.slice(1, 4).map((photo) => (
+                  <div key={photo.id} className="relative aspect-[4/3] overflow-hidden rounded-field bg-sand">
+                    <Image src={photo.url} alt={photo.alt ?? property.title} width={400} height={300} className="h-full w-full object-cover" />
+                  </div>
+                ))}
+              </div>
+            )}
             <h1 className="mt-8 text-4xl">{property.title}</h1>
             <p className="mt-2 text-base text-ink/65">{property.address}, {property.city}, {property.state}</p>
             <p className="mt-6 max-w-xl text-base leading-relaxed text-ink/75">{property.description}</p>
