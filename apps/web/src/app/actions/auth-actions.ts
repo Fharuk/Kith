@@ -14,6 +14,8 @@ import { requireUser } from "@/lib/session";
 import { roleHome } from "@/middleware";
 import { getNimcProvider } from "@/lib/providers/nimc";
 import { notifyUser } from "@/lib/providers/notify";
+import { emailGateFailure, issueEmailVerification } from "@/lib/email-verification";
+import { limitMessage, recordVerificationAttempt, verificationBudget } from "@/lib/verification-limits";
 
 const registerSchema = z.object({
   role: z.enum(["student", "landlord", "porter"]),
@@ -51,6 +53,9 @@ export async function registerAction(_prev: unknown, formData: FormData) {
     await db.insert(porterProfiles).values({ userId: user.id, zone: "Unassigned" });
   }
 
+  // The address is a claim until it is confirmed — send the single-use link now.
+  await issueEmailVerification({ userId: user.id, email: user.email, reason: "signup" });
+
   try {
     await signIn("credentials", { email: user.email, password, redirectTo: roleHome(role) });
   } catch (e) {
@@ -74,6 +79,13 @@ export async function loginAction(_prev: unknown, formData: FormData) {
 /* ── verification gates (mock providers behind interfaces — playbook 03) ── */
 export async function submitNin(formData: FormData) {
   const user = await requireUser();
+  const unconfirmed = await emailGateFailure(user.id);
+  if (unconfirmed) return { error: unconfirmed };
+
+  const budget = await verificationBudget(user.id, "nin");
+  if (!budget.allowed) return { error: limitMessage(budget) };
+  await recordVerificationAttempt({ userId: user.id, step: "nin", outcome: "attempt" });
+
   const nin = String(formData.get("nin") ?? "").trim();
   const dateOfBirth = String(formData.get("dateOfBirth") ?? "").trim();
   if (!/^\d{11}$/.test(nin)) return { error: "NIN must be exactly 11 digits" };
@@ -92,6 +104,7 @@ export async function submitNin(formData: FormData) {
   });
 
   if (!result.verified) {
+    await recordVerificationAttempt({ userId: user.id, step: "nin", outcome: "failure" });
     const reason =
       result.failureReason === "not_found"
         ? "That NIN was not found at NIMC — check the digits and try again"
@@ -107,34 +120,57 @@ export async function submitNin(formData: FormData) {
   await db.update(studentProfiles).set({
     ninHash, nimcVerified: true, currentStep: "matric",
   }).where(eq(studentProfiles.userId, user.id));
+  await recordVerificationAttempt({ userId: user.id, step: "nin", outcome: "success" });
   return { ok: true };
 }
 
 export async function submitMatric(formData: FormData) {
   const user = await requireUser();
+  const unconfirmed = await emailGateFailure(user.id);
+  if (unconfirmed) return { error: unconfirmed };
+
+  const budget = await verificationBudget(user.id, "matric");
+  if (!budget.allowed) return { error: limitMessage(budget) };
+  await recordVerificationAttempt({ userId: user.id, step: "matric", outcome: "attempt" });
+
   const db = getDb();
   const code = String(formData.get("university") ?? "").toLowerCase();
   const matric = String(formData.get("matric") ?? "").toUpperCase();
   const studentEmail = String(formData.get("studentEmail") ?? "").toLowerCase();
   const uni = (await db.select().from(universities).where(eq(universities.code, code)))[0]!;
   if (!uni) return { error: "Unknown university" };
-  if (!new RegExp(uni.matricPattern).test(matric)) return { error: "Matric number format doesn't match this university" };
+  if (!new RegExp(uni.matricPattern).test(matric)) {
+    await recordVerificationAttempt({ userId: user.id, step: "matric", outcome: "failure" });
+    return { error: "Matric number format doesn't match this university" };
+  }
   const domain = studentEmail.split("@")[1];
-  if (!uni.emailDomains.includes(domain ?? "")) return { error: "Email must be your institutional address" };
+  if (!uni.emailDomains.includes(domain ?? "")) {
+    await recordVerificationAttempt({ userId: user.id, step: "matric", outcome: "failure" });
+    return { error: "Email must be your institutional address" };
+  }
   await db.update(studentProfiles).set({
     universityId: uni.id, matricNumber: matric, studentEmail, matricVerified: true, currentStep: "biometric",
   }).where(eq(studentProfiles.userId, user.id));
+  await recordVerificationAttempt({ userId: user.id, step: "matric", outcome: "success" });
   return { ok: true };
 }
 
 export async function submitBiometric() {
   const user = await requireUser();
+  const unconfirmed = await emailGateFailure(user.id);
+  if (unconfirmed) return { error: unconfirmed };
+
+  const budget = await verificationBudget(user.id, "biometric");
+  if (!budget.allowed) return { error: limitMessage(budget) };
+  await recordVerificationAttempt({ userId: user.id, step: "biometric", outcome: "attempt" });
+
   const db = getDb();
   // LIVENESS_PROVIDER=mock returns 0.95 (playbook 03); real provider returns scored selfie hash
   const liveness = 0.95;
   await db.update(studentProfiles).set({ biometricVerified: true, livenessScore: liveness.toFixed(3), currentStep: "review" })
     .where(eq(studentProfiles.userId, user.id));
   await db.update(users).set({ isVerified: true }).where(eq(users.id, user.id));
+  await recordVerificationAttempt({ userId: user.id, step: "biometric", outcome: "success" });
   redirect("/dashboard");
 }
 
@@ -150,6 +186,8 @@ export async function reserveRoom(formData: FormData) {
   const user = await requireUser();
   if (user.role !== "student") return { error: "Only students can book rooms" };
   if (!user.isVerified) return { error: "Complete verification before booking" };
+  const unconfirmed = await emailGateFailure(user.id);
+  if (unconfirmed) return { error: unconfirmed };
   const roomId = String(formData.get("roomId") ?? "");
   const db = getDb();
   const { rooms, properties, bookings, transactions } = await import("@kith/database");

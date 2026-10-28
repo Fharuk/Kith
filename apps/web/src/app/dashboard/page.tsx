@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { eq, desc } from "drizzle-orm";
-import { getDb, bids, bookings, studentProfiles, rooms, properties, transactions } from "@kith/database";
+import { getDb, bids, bookings, studentProfiles, rooms, properties, transactions, users } from "@kith/database";
 import { formatNgn } from "@kith/domain";
 import { requireUser } from "@/lib/session";
 import { SiteNav } from "@/components/site-nav";
 import { SiteFooter } from "@/components/site-footer";
 import { IconGavel, IconKey, IconShieldCheck, IconArrowRight } from "@/components/icons";
 import { DisputeForm } from "@/components/dispute-form";
+import { needsEmailConfirmation } from "@/lib/email-verification";
+import { ResendEmailButton } from "@/app/verify-email/verify-email-form";
 import { PayNowButton } from "./pay-now-button";
 
 export const metadata = { title: "Student dashboard" };
@@ -22,6 +24,8 @@ export default async function StudentDashboard() {
     .innerJoin(rooms, eq(bookings.roomId, rooms.id))
     .innerJoin(properties, eq(rooms.propertyId, properties.id))
     .where(eq(bookings.studentId, user.id));
+  const [me] = await db.select({ emailVerifiedAt: users.emailVerifiedAt, isVerified: users.isVerified }).from(users).where(eq(users.id, user.id));
+  const emailPending = needsEmailConfirmation(me ?? {});
   const myTransactions = await db.select().from(transactions).where(eq(transactions.studentId, user.id));
 
   const gates = (profile?.nimcVerified ? 1 : 0) + (profile?.matricVerified ? 1 : 0) + (profile?.biometricVerified ? 1 : 0);
@@ -30,6 +34,13 @@ export default async function StudentDashboard() {
     <>
       <SiteNav />
       <main className="mx-auto max-w-6xl px-6 py-16">
+        {emailPending && (
+          <div className="mb-8 rounded-card bg-clay/10 px-6 py-5 hairline">
+            <p className="text-sm font-semibold text-ink">Confirm your email to unlock bidding and booking.</p>
+            <p className="mt-1 text-xs text-ink/60">We sent you a link when you signed up. Nothing else is blocked.</p>
+            <ResendEmailButton />
+          </div>
+        )}
         <div className="flex flex-wrap items-end justify-between gap-6">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-clay">{user.pseudonymizedId}</p>
