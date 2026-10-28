@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { createListing, type ListingState } from "@/app/actions/listing-actions";
-import { TIERS } from "@kith/domain";
+import { AMENITIES, TIERS } from "@kith/domain";
 
 const field = "mt-1 w-full rounded-field bg-paper px-3 py-2.5 text-sm text-ink hairline";
 const label = "text-[11px] font-semibold uppercase tracking-[0.1em] text-ink/55";
@@ -72,10 +72,17 @@ export function ListingForm() {
           <label className={label} htmlFor="state">State</label>
           <input id="state" name="state" required defaultValue="Ogun" className={field} />
         </div>
-        <div>
-          <label className={label} htmlFor="amenities">Amenities (comma separated)</label>
-          <input id="amenities" name="amenities" placeholder="Ensuite, Borehole water, Prepaid meter" className={field} />
-        </div>
+        <fieldset className="sm:col-span-2">
+          <legend className={label}>Amenities</legend>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {AMENITIES.map((a) => (
+              <label key={a} className="cursor-pointer rounded-full bg-sand/60 px-3.5 py-1.5 text-xs font-semibold text-ink/70 has-checked:bg-navy has-checked:text-paper hairline">
+                <input type="checkbox" name="amenities" value={a} className="sr-only" />
+                {a}
+              </label>
+            ))}
+          </div>
+        </fieldset>
 
         <div>
           <label className={label} htmlFor="roomNumber">Room number</label>

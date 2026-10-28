@@ -6,7 +6,7 @@ import { z } from "zod";
 import {
   getDb, properties, rooms, auctions, porterTasks, landlordProfiles, auditLogs,
 } from "@kith/database";
-import { TIERS, priceWithinBand, type RoomTier } from "@kith/domain";
+import { TIERS, priceWithinBand, normalizeAmenities, type RoomTier } from "@kith/domain";
 import { requireUser } from "@/lib/session";
 import { emailGateFailure } from "@/lib/email-verification";
 import { notifyUser } from "@/lib/providers/notify";
@@ -28,7 +28,6 @@ const listingSchema = z.object({
   address: z.string().min(6, "Street address is required").max(200),
   city: z.string().min(2).max(60),
   state: z.string().min(2).max(60),
-  amenities: z.string().max(400).optional(),
   roomNumber: z.string().min(1).max(20),
   roomType: z.string().min(2).max(40),
   capacity: z.coerce.number().int().min(1).max(8),
@@ -48,6 +47,8 @@ export async function createListing(_prev: unknown, formData: FormData): Promise
   if (unconfirmed) return { error: unconfirmed };
 
   const parsed = listingSchema.safeParse(Object.fromEntries(formData));
+  const amenityValues = formData.getAll("amenities").map(String);
+  const amenities = normalizeAmenities(amenityValues.length ? amenityValues : [String(formData.get("amenities") ?? "")]);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the listing details" };
   const input = parsed.data;
 
@@ -81,7 +82,7 @@ export async function createListing(_prev: unknown, formData: FormData): Promise
     city: input.city.trim(),
     state: input.state.trim(),
     country: "NG",
-    amenities: (input.amenities ?? "").split(",").map((a) => a.trim()).filter(Boolean),
+    amenities,
     isPhysicallyVerified: false,
   }).returning();
   if (!property) return { error: "Could not create the property — try again" };
