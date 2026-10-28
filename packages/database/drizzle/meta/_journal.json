@@ -8,6 +8,13 @@
       "when": 1793190608997,
       "tag": "0000_conscious_tigra",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793192827332,
+      "tag": "0001_curvy_amphibian",
+      "breakpoints": true
     }
   ]
 }

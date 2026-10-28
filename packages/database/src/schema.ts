@@ -45,6 +45,9 @@ export const users = pgTable("users", {
   isVerified: boolean("is_verified").notNull().default(false),
   failedLogins: integer("failed_logins").notNull().default(0),
   lockedUntil: timestamp("locked_until", { withTimezone: true, mode: "date" }),
+  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true, mode: "date" }),
+  suspendedAt: timestamp("suspended_at", { withTimezone: true, mode: "date" }),
+  suspensionReason: text("suspension_reason"),
   createdAt: now("created_at"),
   updatedAt: now("updated_at"),
 }, (t) => ({
@@ -91,6 +94,15 @@ export const landlordProfiles = pgTable("landlord_profiles", {
   cacNumber: text("cac_number"),
   paystackSubaccountCode: text("paystack_subaccount_code"),
   kycStatus: verificationStatusEnum("kyc_status").notNull().default("pending"),
+  /* payout destination — verified with Paystack /bank/resolve before any transfer */
+  bankCode: text("bank_code"),
+  bankName: text("bank_name"),
+  bankAccountNumber: text("bank_account_number"),
+  bankAccountName: text("bank_account_name"),
+  paystackRecipientCode: text("paystack_recipient_code"),
+  bankVerifiedAt: timestamp("bank_verified_at", { withTimezone: true, mode: "date" }),
+  /* admin hold: stops new payouts without touching escrow state */
+  payoutHold: boolean("payout_hold").notNull().default(false),
 }, (t) => ({ userUnique: unique("landlord_profiles_user_unique").on(t.userId) }));
 
 export const porterProfiles = pgTable("porter_profiles", {
@@ -275,10 +287,75 @@ export const disputes = pgTable("disputes", {
   evidence: jsonb("evidence").$type<Record<string, unknown>>(),
   status: disputeStatusEnum("status").notNull().default("open"),
   resolution: text("resolution"),
+  /** outcome: release_to_landlord | refund_student | split */
+  resolutionOutcome: text("resolution_outcome"),
+  /** kobo returned to the student (0 for release) */
+  refundedKobo: bigint("refunded_kobo", { mode: "bigint" }),
+  /** kobo released to the landlord (0 for refund) */
+  releasedKobo: bigint("released_kobo", { mode: "bigint" }),
+  paystackRefundReference: text("paystack_refund_reference"),
   resolvedBy: uuid("resolved_by").references(() => users.id, { onDelete: "set null" }),
   resolvedAt: timestamp("resolved_at", { withTimezone: true, mode: "date" }),
   createdAt: now("created_at"),
-}, (t) => ({ txIdx: index("disputes_tx_idx").on(t.transactionId) }));
+}, (t) => ({
+  txIdx: index("disputes_tx_idx").on(t.transactionId),
+  statusIdx: index("disputes_status_idx").on(t.status),
+}));
+
+/* ── payouts: escrow → landlord bank account ───────────────────────── */
+export const payoutStatusEnum = pgEnum("payout_status", [
+  "queued", "processing", "paid", "failed", "cancelled",
+]);
+
+export const payouts = pgTable("payouts", {
+  id: id(),
+  /** the booking transaction whose escrow is being paid out */
+  transactionId: uuid("transaction_id").notNull().references(() => transactions.id, { onDelete: "cascade" }),
+  landlordId: uuid("landlord_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  amountKobo: kobo("amount_kobo"),
+  status: payoutStatusEnum("status").notNull().default("queued"),
+  /** Paystack transfer reference — unique per attempt, the idempotency key */
+  transferReference: text("transfer_reference"),
+  transferCode: text("transfer_code"),
+  recipientCode: text("recipient_code"),
+  attempts: integer("attempts").notNull().default(0),
+  failureReason: text("failure_reason"),
+  /** when the queued transfer may next be attempted (backoff) */
+  nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true, mode: "date" }),
+  processedAt: timestamp("processed_at", { withTimezone: true, mode: "date" }),
+  createdAt: now("created_at"),
+}, (t) => ({
+  txUnique: unique("payouts_transaction_unique").on(t.transactionId),
+  refUnique: unique("payouts_transfer_ref_unique").on(t.transferReference),
+  landlordIdx: index("payouts_landlord_idx").on(t.landlordId),
+  statusIdx: index("payouts_status_idx").on(t.status, t.nextAttemptAt),
+}));
+
+/* ── verification attempt ledger (bribe/collusion resistance) ───────── */
+export const verificationAttempts = pgTable("verification_attempts", {
+  id: id(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  step: kycStepEnum("step").notNull(),
+  succeeded: boolean("succeeded").notNull().default(false),
+  reason: text("reason"),
+  createdAt: now("created_at"),
+}, (t) => ({
+  userIdx: index("verif_attempts_user_idx").on(t.userId, t.step, t.createdAt),
+}));
+
+/* ── email verification tokens ─────────────────────────────────────── */
+export const emailVerifications = pgTable("email_verifications", {
+  id: id(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  tokenHash: text("token_hash").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+  consumedAt: timestamp("consumed_at", { withTimezone: true, mode: "date" }),
+  createdAt: now("created_at"),
+}, (t) => ({
+  tokenUnique: unique("email_verifications_token_unique").on(t.tokenHash),
+  userIdx: index("email_verifications_user_idx").on(t.userId),
+}));
 
 /* ── porter work ───────────────────────────────────────────────────── */
 export const porterTasks = pgTable("porter_tasks", {

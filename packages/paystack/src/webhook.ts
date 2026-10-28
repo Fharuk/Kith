@@ -44,6 +44,16 @@ export interface ChargeSuccessData {
   metadata?: Record<string, unknown> | null;
 }
 
+export interface TransferEventData {
+  reference: string;
+  transfer_code?: string;
+  amount: number;
+  currency?: string;
+  status: string;
+  reason?: string | null;
+  occurred_at?: string;
+}
+
 export interface PaystackEvent<T = Record<string, unknown>> {
   event: string;
   data: T;
@@ -69,6 +79,37 @@ export function parseChargeSuccess(rawBody: string): PaystackEvent<ChargeSuccess
     }
   }
   return evt as unknown as PaystackEvent<ChargeSuccessData>;
+}
+
+/**
+ * Parse a transfer.* event. Transfers move REAL money out of the Paystack balance, so a
+ * malformed payload must never be treated as a success — the caller only marks a payout
+ * paid when this returns a well-formed success/failed/reversed body.
+ */
+export function parseTransferEvent(rawBody: string): PaystackEvent<TransferEventData> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawBody);
+  } catch {
+    throw new WebhookParseError("invalid JSON body");
+  }
+  if (typeof parsed !== "object" || parsed === null) throw new WebhookParseError("body is not an object");
+  const evt = parsed as Record<string, unknown>;
+  const name = evt.event;
+  if (
+    name !== PAYSTACK_EVENTS.transferSuccess &&
+    name !== PAYSTACK_EVENTS.transferFailed &&
+    name !== PAYSTACK_EVENTS.transferReversed
+  ) {
+    throw new WebhookParseError(`not a transfer event: ${String(name)}`);
+  }
+  const data = evt.data as Record<string, unknown> | undefined;
+  if (!data || typeof data !== "object") throw new WebhookParseError("missing event data");
+  if (typeof data.reference !== "string" || !data.reference) throw new WebhookParseError("transfer event without reference");
+  if (typeof data.amount !== "number" || !Number.isInteger(data.amount) || data.amount <= 0) {
+    throw new WebhookParseError("transfer event with non-positive integer amount");
+  }
+  return evt as unknown as PaystackEvent<TransferEventData>;
 }
 
 export class WebhookParseError extends Error {

@@ -2,6 +2,7 @@ import { eq, and } from "drizzle-orm";
 import { getDb, transactions, bookings, auditLogs, notifications, users } from "@kith/database";
 import { transition, type EscrowActor } from "@kith/domain";
 import { notifyUser } from "./providers/notify";
+import { queuePayoutForTransaction } from "./payouts";
 import { formatNgn } from "@kith/domain";
 
 /**
@@ -33,6 +34,12 @@ export async function moveEscrow(
     oldValues: { escrowStatus: tx.escrowStatus },
     newValues: { escrowStatus: to, reason: reason ?? null },
   });
+
+  // Released money is owed money: queue the bank transfer in the same operation as the
+  // ledger move, so "released" and "landlord is being paid" can never drift apart.
+  if (to === "released") {
+    await queuePayoutForTransaction(transactionId);
+  }
 
   if (tx.bookingId) {
     const [student, landlord] = await Promise.all([

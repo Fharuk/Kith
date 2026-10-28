@@ -3,12 +3,14 @@ import { getDb, transactions, bookings, auditLogs, users } from "@kith/database"
 import {
   verifyWebhookSignature,
   parseChargeSuccess,
+  parseTransferEvent,
   WebhookParseError,
   PAYSTACK_EVENTS,
   type ChargeSuccessData,
 } from "@kith/paystack";
 import { getPaystack } from "./paystack";
 import { notifyUser } from "./providers/notify";
+import { applyTransferOutcome } from "./payouts";
 import { moveEscrow } from "./escrow";
 import { createGuestPass } from "./guest-pass";
 
@@ -37,12 +39,34 @@ export async function handlePaystackEvent(rawBody: string, signatureHeader: stri
   try {
     evt = parseChargeSuccess(rawBody);
   } catch (e) {
-    if (e instanceof WebhookParseError) return { status: 400, body: { ok: false, error: e.message } };
-    throw e;
+    if (!(e instanceof WebhookParseError)) throw e;
+    // Not a charge — transfer events carry the payout outcome (money already moved).
+    try {
+      const transferEvent = parseTransferEvent(rawBody);
+      const status =
+        transferEvent.event === PAYSTACK_EVENTS.transferSuccess
+          ? "success"
+          : transferEvent.event === PAYSTACK_EVENTS.transferFailed
+            ? "failed"
+            : "reversed";
+      const result = await applyTransferOutcome({
+        reference: transferEvent.data.reference,
+        status,
+        transferCode: transferEvent.data.transfer_code,
+        reason: transferEvent.data.reason ?? null,
+      });
+      return {
+        status: 200,
+        body: result.applied
+          ? { ok: true, applied: transferEvent.event, payoutId: result.payoutId }
+          : { ok: true, ignored: "unknown transfer reference" },
+      };
+    } catch {
+      return { status: 400, body: { ok: false, error: e.message } };
+    }
   }
 
   if (evt.event !== PAYSTACK_EVENTS.chargeSuccess) {
-    // transfer.* / refund.* land with the payout + dispute slices; acknowledge for now.
     return { status: 200, body: { ok: true, ignored: evt.event } };
   }
 
