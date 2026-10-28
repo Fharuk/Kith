@@ -98,13 +98,16 @@ vercel env add CRON_SECRET production
 vercel --prod
 ```
 
-`vercel.json` schedules `POST /api/cron/settle` **every minute**. That single endpoint is the
+`apps/web/vercel.json` schedules `POST /api/cron/settle` **every minute**. The file lives in
+the project's root directory (Vercel's `root directory` setting is `apps/web`); a copy at
+the repo root is silently ignored, which is how the first deployment shipped with no cron
+at all. That single endpoint is the
 whole worker: auction settlement, 24h escrow auto-release, payout reconciliation + bank
 push, and the notification outbox. It is guarded by `CRON_SECRET` and single-flighted with a
 Postgres advisory lock, so overlapping ticks are free.
 
 **Scheduling on the current plan.** This project is on Hobby, which rejects anything faster
-than once a day, so `vercel.json` runs `/api/cron/settle` once daily (`5 0 * * *`). Five-minute
+than once a day, so `apps/web/vercel.json` runs `/api/cron/settle` once daily (`5 0 * * *`). Five-minute
 granularity comes from `.github/workflows/worker.yml`, which POSTs the same endpoint every five
 minutes with `Authorization: Bearer ${{ secrets.CRON_SECRET }}`:
 
