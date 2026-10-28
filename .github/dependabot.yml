@@ -1,0 +1,32 @@
+version: 2
+
+# Supply-chain hygiene for a money-moving app: every dependency bump arrives as a reviewable PR
+# rather than a surprise inside someone's feature branch.
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Africa/Lagos
+    open-pull-requests-limit: 6
+    versioning-strategy: increase
+    groups:
+      # Patch/minor noise is batched; majors stay separate so each gets a real decision.
+      minor-and-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      # Argon2 and PGlite are native/wasm and pinned deliberately: both are verified by the
+      # security review, and a silent bump changes hashing or storage behaviour.
+      - dependency-name: "@node-rs/argon2"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@electric-sql/pglite"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3

@@ -1,0 +1,32 @@
+# Extends the default ruleset; only allow-lists known-safe fixtures so the scanner stays useful
+# rather than becoming noise everyone ignores.
+[extends]
+  useDefault = true
+
+[[rules]]
+  id = "kith-paystack-secret"
+  description = "Paystack secret key"
+  regex = '''sk_(test|live)_[0-9a-zA-Z]{20,}'''
+  tags = ["key", "paystack"]
+
+[[rules]]
+  id = "kith-supabase-service-role"
+  description = "Supabase service-role JWT"
+  regex = '''"role"\s*:\s*"service_role"'''
+  tags = ["key", "supabase"]
+
+[allowlist]
+  description = "Demo fixtures and documentation placeholders"
+  paths = [
+    '''docs/.*\.md''',
+    '''README\.md''',
+    '''\.env\.example''',
+    '''apps/web/test/.*''',
+    '''packages/.*/test/.*''',
+  ]
+  regexes = [
+    '''demo-secret''',
+    '''demo1234''',
+    '''generate-with-openssl-rand-base64-32''',
+    '''sk_test_your''',
+  ]
