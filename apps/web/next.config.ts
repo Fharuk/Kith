@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["@kith/domain", "@kith/ui", "@kith/database"],
+  transpilePackages: ["@kith/domain", "@kith/ui", "@kith/database", "@kith/paystack"],
   // PGlite ships WASM + postgres.data assets resolved via import.meta.url, and argon2 is
   // native: both must load from node_modules, not from the server bundle.
   serverExternalPackages: ["@electric-sql/pglite", "@node-rs/argon2"],

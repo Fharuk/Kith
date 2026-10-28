@@ -1,6 +1,6 @@
 "use server";
 
-import { randomBytes, createHash } from "node:crypto";
+import { createHash } from "node:crypto";
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -109,13 +109,20 @@ export async function submitBiometric() {
 }
 
 /* ── reserve a fixed-price room into escrow (mock Paystack, mocks-first decision) ── */
+/**
+ * Reserve → Paystack golden flow. Reserve creates a PENDING booking + PENDING transaction
+ * (85/15 split pre-computed, room held), then redirects the student to Paystack — or to
+ * the hosted test checkout in mock mode. Nothing is confirmed until a signed
+ * charge.success webhook lands (see lib/paystack-webhook.ts): that flips the booking to
+ * confirmed, moves escrow pending→held, and mints the guest pass.
+ */
 export async function reserveRoom(formData: FormData) {
   const user = await requireUser();
   if (user.role !== "student") return { error: "Only students can book rooms" };
   if (!user.isVerified) return { error: "Complete verification before booking" };
   const roomId = String(formData.get("roomId") ?? "");
   const db = getDb();
-  const { rooms, properties, bookings, guestPasses, transactions } = await import("@kith/database");
+  const { rooms, properties, bookings, transactions } = await import("@kith/database");
   const room = (await db.select().from(rooms).where(eq(rooms.id, roomId)))[0];
   if (!room || room.saleMode !== "fixed" || !room.isAvailable) return { error: "Room not bookable" };
   const property = (await db.select().from(properties).where(eq(properties.id, room.propertyId)))[0];
@@ -131,19 +138,13 @@ export async function reserveRoom(formData: FormData) {
     bookedPriceKobo: price,
     checkInDate: new Date(now + 3 * day),
     checkOutDate: new Date(now + 368 * day),
-    status: "confirmed",
+    status: "pending", // confirmed only by the payment webhook
     signedAgreementHash: createHash("sha256").update(`licence-to-occupy-v1+${user.id}`).digest("hex"),
   }).returning();
 
-  const secret = randomBytes(20).toString("hex");
-  await db.insert(guestPasses).values({
-    bookingId: booking.id,
-    codeHash: createHash("sha256").update(secret).digest("hex"),
-    totpSecretEnc: `enc:${secret}`,
-    expiresAt: new Date(now + 368 * day),
-  });
-
-  await db.insert(transactions).values({
+  const { newPaystackReference, initCheckout } = await import("@/lib/paystack");
+  const reference = newPaystackReference();
+  const [tx] = await db.insert(transactions).values({
     bookingId: booking.id,
     studentId: user.id,
     landlordId: property.landlordId,
@@ -151,12 +152,14 @@ export async function reserveRoom(formData: FormData) {
     platformFeeKobo: platform,
     landlordNetKobo: price - platform,
     transactionType: "booking",
-    status: "completed",
-    escrowStatus: "held",
-    paystackReference: `KTH-MOCK-${randomBytes(6).toString("hex").toUpperCase()}`,
+    status: "pending",
+    escrowStatus: "pending",
+    paystackReference: reference,
     autoReleaseAt: new Date(now + 3 * day + day),
-  });
+  }).returning();
 
   await db.update(rooms).set({ isAvailable: false }).where(eq(rooms.id, room.id));
-  redirect("/passes");
+
+  const url = await initCheckout({ transactionId: tx.id, reference, email: user.email, amountKobo: price });
+  redirect(url); // Paystack authorization URL, or /checkout/mock?ref=… in mock mode
 }

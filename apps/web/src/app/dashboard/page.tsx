@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/session";
 import { SiteNav } from "@/components/site-nav";
 import { SiteFooter } from "@/components/site-footer";
 import { IconGavel, IconKey, IconShieldCheck, IconArrowRight } from "@/components/icons";
+import { PayNowButton } from "./pay-now-button";
 
 export const metadata = { title: "Student dashboard" };
 
@@ -60,9 +61,16 @@ export default async function StudentDashboard() {
                   </div>
                   <div className="flex items-center gap-4">
                     <p className="tabular text-sm font-semibold text-navy">{formatNgn(booking.bookedPriceKobo ?? 0n)}</p>
-                    <Link href="/passes" className="inline-flex items-center gap-1.5 rounded-full bg-kith-green/15 px-4 py-2 text-xs font-semibold text-kith-green-deep">
-                      <IconKey width={14} height={14} /> Guest pass
-                    </Link>
+                    {booking.status === "pending" ? (
+                      <div className="flex flex-col items-end gap-1">
+                        <span className="rounded-full bg-clay/15 px-3 py-1 text-[11px] font-semibold text-clay">Awaiting payment</span>
+                        <PayNowButton bookingId={booking.id} />
+                      </div>
+                    ) : (
+                      <Link href="/passes" className="inline-flex items-center gap-1.5 rounded-full bg-kith-green/15 px-4 py-2 text-xs font-semibold text-kith-green-deep">
+                        <IconKey width={14} height={14} /> Guest pass
+                      </Link>
+                    )}
                   </div>
                 </li>
               ))}
