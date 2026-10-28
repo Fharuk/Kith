@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { eq, and } from "drizzle-orm";
-import { getDb, rooms, properties, media, auctions, landlordProfiles } from "@kith/database";
+import { eq, and, desc } from "drizzle-orm";
+import { getDb, rooms, properties, media, auctions, landlordProfiles, inspectionReports } from "@kith/database";
 import { formatNgn } from "@kith/domain";
 import { SiteNav } from "@/components/site-nav";
 import { SiteFooter } from "@/components/site-footer";
@@ -43,6 +43,13 @@ export default async function RoomPage({ params }: { params: Promise<{ id: strin
   const propertyPhotosAll = [...roomPhotos, ...propertyPhotos.filter((p) => !roomPhotos.some((r) => r.url === p.url))];
   const auction = (await db.select().from(auctions).where(and(eq(auctions.roomId, room.id), eq(auctions.status, "active"))))[0]!;
   const landlord = (await db.select().from(landlordProfiles).where(eq(landlordProfiles.userId, property.landlordId)))[0]!;
+  // The newest on-site report for this property, if a porter has filed one.
+  const [latestReport] = await db
+    .select({ slug: inspectionReports.publicSlug, score: inspectionReports.score, at: inspectionReports.createdAt })
+    .from(inspectionReports)
+    .where(eq(inspectionReports.propertyId, property.id))
+    .orderBy(desc(inspectionReports.createdAt))
+    .limit(1);
 
   return (
     <>
@@ -68,6 +75,21 @@ export default async function RoomPage({ params }: { params: Promise<{ id: strin
             }),
           }}
         />
+
+        {latestReport && (
+          <Link
+            href={`/reports/${latestReport.slug}`}
+            className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-card bg-kith-green/10 px-5 py-4 hairline transition-colors hover:bg-kith-green/15"
+          >
+            <span className="text-sm">
+              <span className="font-semibold text-kith-green-deep">Proof of Room · {latestReport.score}/100</span>
+              <span className="ml-2 text-ink/60">A Kith porter inspected this property on site.</span>
+            </span>
+            <span className="text-sm font-semibold text-navy underline decoration-kith-green decoration-2 underline-offset-4">
+              Read the report
+            </span>
+          </Link>
+        )}
         <nav aria-label="Breadcrumb" className="text-sm text-ink/55">
           <Link href="/rooms" className="hover:text-navy">Rooms</Link>
           <span className="mx-2">/</span>

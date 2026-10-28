@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb, media, properties, rooms } from "@kith/database";
 import { createListing } from "@/app/actions/listing-actions";
 import { verifyTaskAction } from "@/app/actions/porter-task-actions";
+import { submitInspection } from "@/app/actions/inspection-actions";
 import { submitNin } from "@/app/actions/auth-actions";
 import { openDisputeAction } from "@/app/actions/dispute-actions";
 import { adminResolveDispute } from "@/app/actions/admin-actions";
@@ -63,6 +64,11 @@ export async function POST(req: Request) {
     return Response.json(await verifyTaskAction(null, fd));
   }
 
+  if (body.op === "inspection") {
+    const fd = new FormData();
+    for (const [k, v] of Object.entries(body)) if (k !== "op" && v) fd.append(k, v);
+    return Response.json(await submitInspection(null, fd));
+  }
   if (body.op === "reset-attempts") {
     const user = await currentUser();
     if (!user) return Response.json({ ok: false, error: "unauthenticated" }, { status: 401 });
