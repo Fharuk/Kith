@@ -2,6 +2,10 @@ import { and, eq } from "drizzle-orm";
 import { getDb, media, properties, rooms } from "@kith/database";
 import { createListing } from "@/app/actions/listing-actions";
 import { verifyTaskAction } from "@/app/actions/porter-task-actions";
+import { openDisputeAction } from "@/app/actions/dispute-actions";
+import { adminResolveDispute } from "@/app/actions/admin-actions";
+import { currentUser } from "@/lib/session";
+import { getDb as dbFor, transactions as txTable } from "@kith/database";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,6 +58,29 @@ export async function POST(req: Request) {
     fd.append("outcome", body.outcome ?? "verified");
     fd.append("notes", body.notes ?? "Dev harness verification");
     return Response.json(await verifyTaskAction(null, fd));
+  }
+
+  if (body.op === "list-tx") {
+    const user = await currentUser();
+    if (!user) return Response.json({ ok: false, error: "unauthenticated" }, { status: 401 });
+    const rows = await dbFor().select().from(txTable).where(eq(txTable.studentId, user.id));
+    return Response.json({ ok: true, transactions: rows.map((t) => ({ id: t.id, escrowStatus: t.escrowStatus, status: t.status, amountKobo: t.amountKobo.toString(), reference: t.paystackReference })) });
+  }
+
+  if (body.op === "open-dispute") {
+    const fd = new FormData();
+    fd.append("transactionId", body.transactionId ?? "");
+    fd.append("reason", body.reason ?? "");
+    return Response.json(await openDisputeAction(null, fd));
+  }
+
+  if (body.op === "resolve-dispute") {
+    const fd = new FormData();
+    fd.append("disputeId", body.disputeId ?? "");
+    fd.append("outcome", body.outcome ?? "");
+    fd.append("note", body.note ?? "");
+    if (body.refundNaira) fd.append("refundNaira", body.refundNaira);
+    return Response.json(await adminResolveDispute(null, fd));
   }
 
   return Response.json({ ok: false, error: "unknown op" }, { status: 400 });

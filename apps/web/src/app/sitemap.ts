@@ -2,6 +2,9 @@ import type { MetadataRoute } from "next";
 import { eq } from "drizzle-orm";
 import { getDb, rooms, properties } from "@kith/database";
 
+// Listings change; a build-time snapshot would go stale. Hourly ISR keeps crawlers honest.
+export const revalidate = 3600;
+
 const BASE = (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
 
 /** Public surface only: consoles, checkout and admin are deliberately absent. */
