@@ -98,7 +98,8 @@ vercel env add CRON_SECRET production
 vercel --prod
 ```
 
-`apps/web/vercel.json` schedules `POST /api/cron/settle` **every minute**. The file lives in
+`apps/web/vercel.json` schedules `GET /api/cron/settle` (Vercel cron issues GET; the route
+accepts both verbs and authorises identically). The file lives in
 the project's root directory (Vercel's `root directory` setting is `apps/web`); a copy at
 the repo root is silently ignored, which is how the first deployment shipped with no cron
 at all. That single endpoint is the
