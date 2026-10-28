@@ -385,7 +385,20 @@ export const notifications = pgTable("notifications", {
   providerMessageId: text("provider_message_id"),
   readAt: timestamp("read_at", { withTimezone: true, mode: "date" }),
   createdAt: now("created_at"),
-}, (t) => ({ userIdx: index("notifications_user_idx").on(t.userId, t.readAt) }));
+  /* durable outbox: the row is written BEFORE the vendor call, so a crash or a provider
+     outage leaves a retryable record instead of a silently lost message */
+  destination: text("destination"),
+  body: text("body"),
+  subject: text("subject"),
+  deliveryStatus: text("delivery_status").notNull().default("pending"),
+  deliveryAttempts: integer("delivery_attempts").notNull().default(0),
+  lastError: text("last_error"),
+  nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true, mode: "date" }),
+  deliveredAt: timestamp("delivered_at", { withTimezone: true, mode: "date" }),
+}, (t) => ({
+  userIdx: index("notifications_user_idx").on(t.userId, t.readAt),
+  outboxIdx: index("notifications_outbox_idx").on(t.deliveryStatus, t.nextAttemptAt),
+}));
 
 export const auditLogs = pgTable("audit_logs", {
   id: id(),

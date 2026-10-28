@@ -15,6 +15,13 @@
       "when": 1793192827332,
       "tag": "0001_curvy_amphibian",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793194022762,
+      "tag": "0002_spotty_goblin_queen",
+      "breakpoints": true
     }
   ]
 }
