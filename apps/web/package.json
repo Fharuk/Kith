@@ -17,7 +17,11 @@
     "next": "16.4.3",
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "socket.io-client": "^4.8.1"
+    "socket.io-client": "^4.8.1",
+    "next-auth": "5.0.0-beta.29",
+    "zod": "^3.24.1",
+    "drizzle-orm": "^0.38.3",
+    "@kith/database": "workspace:*"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.3.3",
